@@ -1,0 +1,3239 @@
+"""
+Autor: Lucas Isaac Vieira Oliveira
+# E-mail: lucasisaac@lenep.uenf.br
+Linkedin: www.linkedin.com/in/lucasisaacvoliveira/
+"""
+
+import statistics
+import tkinter as tk
+from tkinter import filedialog as fd
+from tkinter import ttk
+import os
+from typing import List, Any
+
+import numpy as np
+from math import *
+import math as mt
+import ast as ast
+from scipy import stats
+from scipy.stats import chisquare
+from scipy.spatial.transform import Rotation as R
+import sympy as sp
+import pandas as pd
+import timeit
+from pprint import pprint
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d import art3d
+import matplotlib.patches as patches
+import sys
+
+
+class DataInput(tk.Frame):
+
+    def __init__(self, latitude=None, longitude=None, depthMSL=None, rkb=None, sonda=None, gtot=None,
+                 magneticdeclination=None, dipangle=None, earthrotationrate=15.041, erot=None, grid_correction=None,
+                 magnetictotalfield=None,
+                 significancia=None, numero_surveys=0, numero_comparacao=0, numero_IPM=0, tieonM=None, tieonG=None,
+                 tieonOMM=None, master=None, ):
+
+        if master is None:
+            master = tk.Tk()
+
+        super().__init__(master)
+
+        self.master = master
+        self.master.withdraw()
+        self.create_root_escolha_arquivos()
+        self.window_closed = False
+
+        self.stringvars = []
+        self.last_filled_rows_per_trajetoria = {}
+
+        self.lat = latitude
+        self.long = longitude
+        self.rkb = rkb
+        self.sonda = sonda
+        self.depthMSL = depthMSL
+        self.gtot = gtot
+        self.mtot = magnetictotalfield
+        self.magnetic_declination = magneticdeclination
+        self.dipangle = dipangle
+        self.ERR = earthrotationrate
+        self.erot = erot
+        self.grid_correction = grid_correction
+        self.significancia = significancia
+
+        self.numero_comparacao = numero_comparacao
+        self.numero_surveys = numero_surveys
+        self.numero_IPM = numero_IPM
+        self.trajetorias = []
+        self.survey_filenames = []
+        self.ipm_names = []
+
+        # Lista para armazenar as informações dos surveys e nomes dos arquivos.txt
+        self.surveys = []
+
+        self.errorM = []
+        self.vectorM = []
+        self.tie_on_M = tieonM
+        self.unitM = []
+        self.valueM = []
+        self.formulaM = []
+
+        self.errorG = []
+        self.vectorG = []
+        self.tie_on_G = tieonG
+        self.unitG = []
+        self.valueG = []
+        self.formulaG = []
+
+        self.errorOMM = []
+        self.vectorOMM = []
+        self.tie_on_OMM = tieonOMM
+        self.unitOMM = []
+        self.valueOMM = []
+        self.formulaOMM = []
+
+    def get_user_input(self):
+
+        """
+        self.lat = float(input("Insira o valor da latitude: "))
+        self.long = float(input("Insira o valor da longitude: "))
+        self.sonda = string(input("A sonda é flutuante ou fixa?"))
+        self.rkb = float(input("Insira o valor da altura da mesa rotativa (RKB): "))
+        self.depthMSL = float(input("Insira o valor da lamina da água: "))
+        self.gtot = float(input("Insira o valor da gravidade terrestre total: "))
+        self.mtot = float(input("Insira o valor do campo magnético total: "))
+        self.magnetic_declination = float(input("Insira o valor da declinação magnética: "))
+        self.dipangle = float(input("Insira o valor do Dip Angle: "))
+        self.significancia = float(input("Insira o valor do nível de significância: "))
+        """
+
+        # self.long = float(input("Insira o valor da longitude: "))
+        #self.sonda = "fixa"
+        self.sonda = "flutuante"
+        self.rkb = 0#25
+        self.depthMSL = 0#614
+        self.significancia = 2
+        self.ERR = 15.041
+
+        """
+        #Exemplo 1 ISCWSA
+        self.lat = 60
+        self.gtot = 9.80665
+        self.mtot = 50000
+        self.dipangle = 72
+        self.magnetic_declination = -4
+        self.grid_correction = #2.5981
+        """
+
+        """
+        #Exemplo 2 ISCWSA
+        self.lat = 28
+        self.gtot = 9.80665
+        self.mtot = 48000
+        self.dipangle = 58
+        self.magnetic_declination = 2
+        self.grid_correction = 1.4084
+        """
+
+        """
+        #Exemplo 3 ISCWSA
+        self.lat = -40
+        self.gtot = 9.80665
+        self.mtot = 61000
+        self.dipangle = -70
+        self.magnetic_declination = 13
+        self.grid_correction = -1.9284
+        """
+
+        self.numero_surveys = int(
+            input("Insira a quantidade de surveys a serem importadas \nObs: Minimo 2 e Máximo 3: "))
+        self.numero_comparacao = int(
+            input("Insira o número de trajetórias do poço para serem comparadas \nObs: Minimo 2 e Máximo 3: "))
+        self.numero_IPM = int(input("Insira o número de IPM para serem importados: "))
+
+        # Transformação das listas de graus para radianos
+        self.dipangle = mt.radians(self.dipangle)
+        self.magnetic_declination = mt.radians(self.magnetic_declination)
+
+        self.ERR = self.ERR * (mt.pi / 180)
+
+        self.erot = self.ERR * mt.cos(mt.radians(self.lat))
+
+    def surveysimport(self):
+
+        filetypes = (('text files', '*.txt'), ('All files', '*.*'))
+
+        # Loop para importar os arquivos conforme o número de surveys informado pelo usuário
+        for i in range(self.numero_surveys):
+            # Faz com que a janela de selação dos arquivos apareça em primeiro plano
+            self.escolha_arquivos.attributes('-topmost', True)
+            # Solicita ao usuário que selecione o arquivo
+            filename = fd.askopenfilename(title='Selecione o Arquivo do Survey', parent=self.escolha_arquivos,
+                                          initialdir='shell:MyComputerFolder', filetypes=filetypes)
+
+            # Importa as informações do arquivo e adiciona à lista de surveys
+            M, inc, az = np.loadtxt(open(filename, "r"), usecols=range(3), unpack=True)
+            self.surveys.append({'M': M, 'inc': inc, 'az': az})
+            self.survey_filenames.append(os.path.splitext(os.path.basename(filename))[0])
+
+    def ipmimport(self):
+
+        ipmfiletypes = (('text files', '*.txt'), ('All files', '*.*'))
+
+        # Lista para armazenar as informações dos arquivos IPM
+        ipm_files = []
+
+        # Loop para importar os arquivos IPM conforme o número informado pelo usuário
+        for i in range(self.numero_IPM):
+            # Faz com que a janela de selação dos arquivos apareça em primeiro plano
+            self.escolha_arquivos.attributes('-topmost', True)
+
+            # Solicita ao usuário que selecione o arquivo IPM
+            ipm_filename = fd.askopenfilename(title=f"Selecione o Arquivo IPM", parent=self.escolha_arquivos,
+                                              initialdir='shell:MyComputerFolder', filetypes=ipmfiletypes)
+
+            # Importa as informações do arquivo IPM e adiciona à lista de arquivos IPM
+            ipm_data = np.loadtxt(open(ipm_filename, "r"), dtype=str, comments='#', usecols=range(6))
+            ipm_files.append(
+                {'error': ipm_data[:, 0], 'vector': ipm_data[:, 1], 'tie_on': ipm_data[:, 2], 'unit': ipm_data[:, 3],
+                 'value': ipm_data[:, 4], 'formula': ipm_data[:, 5]})
+
+            self.ipm_names.append(os.path.splitext(os.path.basename(ipm_filename))[0])
+
+        # Armazena as informações dos arquivos IPM nos atributos correspondentes da classe
+        if self.numero_IPM >= 1:
+            self.errorM, self.vectorM, self.tie_on_M, self.unitM, self.valueM, self.formulaM = \
+                ipm_files[0]['error'], ipm_files[0]['vector'], ipm_files[0]['tie_on'], ipm_files[0]['unit'], \
+                ipm_files[0]['value'], ipm_files[0]['formula']
+
+        if self.numero_IPM >= 2:
+            self.errorG, self.vectorG, self.tie_on_G, self.unitG, self.valueG, self.formulaG = \
+                ipm_files[1]['error'], ipm_files[1]['vector'], ipm_files[1]['tie_on'], ipm_files[1]['unit'], \
+                ipm_files[1]['value'], ipm_files[1]['formula']
+
+        if self.numero_IPM >= 3:
+            self.errorOMM, self.vectorOMM, self.tie_on_OMM, self.unitOMM, self.valueOMM, self.formulaOMM = \
+                ipm_files[2]['error'], ipm_files[2]['vector'], ipm_files[2]['tie_on'], ipm_files[2]['unit'], \
+                ipm_files[2]['value'], ipm_files[2]['formula']
+
+    def create_root_tabela_trajetoria(self):
+
+        self.root_tabela_trajetoria = tk.Toplevel(self.master)
+
+        self.frame_tabela_trajetoria = tk.Frame(self.root_tabela_trajetoria)  # Adicione esta linha
+        self.frame_tabela_trajetoria.pack(fill=tk.BOTH, expand=True)  # Adicione esta linha
+
+        self.root_tabela_trajetoria.title('Trajetória')
+        self.root_tabela_trajetoria.geometry('1300x350')
+
+        self.num_rows = 6
+        self.header = ['Linha', 'Seção', 'MD Inicial', 'MD Final', 'Modelo de erro', 'Survey']
+        self.secao = ['16', '12 3/4', '8 1/2']
+
+        self.btn_add_row = tk.Button(self.frame_tabela_trajetoria, text='Adicionar linha', font=('Arial', 12),
+                                     command=self.add_row)
+        self.btn_save = tk.Button(self.frame_tabela_trajetoria, text='Salvar e Finalizar', font=('Arial', 12, 'bold'),
+                                  command=self.salvar_finalizar_tabela)
+        self.btn_add_trajetoria = tk.Button(self.frame_tabela_trajetoria, text='Adicionar trajetória',
+                                            font=('Arial', 12, 'bold'), command=self.add_trajetoria)
+
+    def create_root_escolha_arquivos(self):
+
+        self.escolha_arquivos = tk.Toplevel(self.master)
+        self.escolha_arquivos.withdraw()
+
+    def get_tie_on(self):
+
+        self.create_root_tabela_trajetoria()
+
+        self.stringvars = [[]]
+
+        for col, header_text in enumerate(self.header):
+            # Cria um rótulo para cada cabeçalho
+            lbl_header = tk.Label(self.frame_tabela_trajetoria, text=header_text, font=('Arial', 12, 'bold'))
+            lbl_header.grid(row=0, column=col, padx=5, pady=5)
+
+        # Cria campos de entrada e menus suspensos para cada linha da tabela
+        for row in range(1, self.num_rows):
+
+            row_vars = []  # Cria uma lista para armazenar as StringVars de cada linha
+
+            for col, header_text in enumerate(self.header):
+
+                if header_text == 'Modelo de erro':
+                    # Cria um menu suspenso para a coluna "Modelo de erro"
+                    var = tk.StringVar(self.frame_tabela_trajetoria)
+                    var.set(self.ipm_names[0])
+                    dropdown = tk.OptionMenu(self.frame_tabela_trajetoria, var, *self.ipm_names)
+                    dropdown.config(width=15, font=('Arial', 12))
+                    dropdown.grid(row=row, column=col, padx=10, pady=10)
+                    row_vars.append(var)  # Adiciona a StringVar à lista de variáveis da linha
+
+                elif header_text == 'Seção':
+                    # Cria um menu suspenso para a coluna "Modelo de erro"
+                    var = tk.StringVar(self.frame_tabela_trajetoria)
+                    var.set(self.secao[0])
+                    dropdown = tk.OptionMenu(self.frame_tabela_trajetoria, var, *self.secao)
+                    dropdown.config(width=15, font=('Arial', 12))
+                    dropdown.grid(row=row, column=col, padx=10, pady=10)
+                    row_vars.append(var)  # Adiciona a StringVar à lista de variáveis da linha
+
+                elif header_text == 'Survey':
+                    # Cria um menu suspenso para a coluna "Modelo de erro"
+                    var = tk.StringVar(self.frame_tabela_trajetoria)
+                    var.set(self.survey_filenames[0])
+                    dropdown = tk.OptionMenu(self.frame_tabela_trajetoria, var, *self.survey_filenames)
+                    dropdown.config(width=15, font=('Arial', 12))
+                    dropdown.grid(row=row, column=col, padx=10, pady=10)
+                    row_vars.append(var)  # Adiciona a StringVar à lista de variáveis da linha
+
+                else:
+
+                    if col == 0:
+                        # Cria um Label para exibir o número da linha
+                        lbl_row_num = tk.Label(self.frame_tabela_trajetoria, text=str(row), font=('Arial', 12))
+                        lbl_row_num.grid(row=row, column=col, padx=5, pady=5)
+                        var = self.frame_tabela_trajetoria.grid_slaves(row=row, column=col)[0].cget("text")
+                        row_vars.append(var)  # Adiciona a StringVar à lista de variáveis da linha
+                    else:
+                        # Cria um Entry para o usuário preencher
+                        entry = tk.Entry(self.frame_tabela_trajetoria, font=('Arial', 12))
+                        entry.grid(row=row, column=col, padx=3, pady=3)
+                        row_vars.append(None)  # Adiciona None à lista de variáveis da linha
+
+            self.stringvars.append(row_vars)  # Adiciona a lista de variáveis da linha à lista geral
+
+            # Aloca o botão para adicionar uma linha na tabela
+            self.btn_add_row.grid(row=1, column=6, columnspan=len(self.header), padx=5, pady=5)
+
+            # Aloca o botão para adicionar uma nova trajetória na tabela
+            self.btn_add_trajetoria.grid(row=2, column=6, columnspan=len(self.header), padx=5, pady=5)
+
+            # Aloca o botão para salvar os dados inseridos na tabela
+            self.btn_save.grid(row=3, column=6, columnspan=len(self.header), padx=5, pady=5)
+
+    def add_row(self):
+
+        new_row_vars = []  # Cria uma lista para armazenar as StringVars de cada linha
+
+        for col, header_text in enumerate(self.header):
+
+            if header_text == 'Modelo de erro':
+                # Cria um menu suspenso para a coluna "Modelo de erro"
+                var = tk.StringVar(self.frame_tabela_trajetoria)
+                var.set(self.ipm_names[0])
+                dropdown = tk.OptionMenu(self.frame_tabela_trajetoria, var, *self.ipm_names)
+                dropdown.config(width=15, font=('Arial', 12))
+                dropdown.grid(row=self.num_rows, column=col, padx=10, pady=10)
+                new_row_vars.append(var)  # Adiciona a StringVar à lista de variáveis da linha
+
+            elif header_text == 'Seção':
+                # Cria um menu suspenso para a coluna "Modelo de erro"
+                var = tk.StringVar(self.frame_tabela_trajetoria)
+                var.set(self.secao[0])
+                dropdown = tk.OptionMenu(self.frame_tabela_trajetoria, var, *self.secao)
+                dropdown.config(width=15, font=('Arial', 12))
+                dropdown.grid(row=self.num_rows, column=col, padx=10, pady=10)
+                new_row_vars.append(var)  # Adiciona a StringVar à lista de variáveis da linha
+
+            elif header_text == 'Survey':
+                # Cria um menu suspenso para a coluna "Modelo de erro"
+                var = tk.StringVar(self.frame_tabela_trajetoria)
+                var.set(self.survey_filenames[0])
+                dropdown = tk.OptionMenu(self.frame_tabela_trajetoria, var, *self.survey_filenames)
+                dropdown.config(width=15, font=('Arial', 12))
+                dropdown.grid(row=self.num_rows, column=col, padx=10, pady=10)
+                new_row_vars.append(var)  # Adiciona a StringVar à lista de variáveis da linha
+
+            else:
+
+                if col == 0:
+                    # Cria um Label para exibir o número da linha
+                    lbl_row_num = tk.Label(self.frame_tabela_trajetoria, text=str(self.num_rows), font=('Arial', 12))
+                    lbl_row_num.grid(row=self.num_rows, column=col, padx=5, pady=5)
+                    var = self.frame_tabela_trajetoria.grid_slaves(row=self.num_rows, column=col)[0].cget("text")
+                    new_row_vars.append(var)  # Adiciona a StringVar à lista de variáveis da linha
+
+                else:
+                    # Cria um Entry para o usuário preencher
+                    entry = tk.Entry(self.frame_tabela_trajetoria, font=('Arial', 12))
+                    entry.grid(row=self.num_rows, column=col, padx=3, pady=3)
+                    new_row_vars.append(None)  # Adiciona None à lista de variáveis da linha
+
+        self.stringvars.append(new_row_vars)  # Adiciona a lista de variáveis da linha à lista geral
+        self.num_rows += 1
+
+        # Ajusta a altura da janela principal para exibir a nova linha adicionada
+        self.root_tabela_trajetoria.geometry(
+            f'{self.root_tabela_trajetoria.winfo_width()}x{self.root_tabela_trajetoria.winfo_height() + 50}')
+
+    def add_trajetoria(self):
+
+        self.trajetorias.append([])
+
+        last_filled_row = self.get_last_filled_row()
+
+        # Obtém os valores inseridos pelo usuário e os imprime na tela
+        for row in range(1, self.num_rows):
+            values = []
+            for col in range(6):
+                if col == 0:
+                    value = self.frame_tabela_trajetoria.grid_slaves(row=row, column=col)[0].cget("text")
+                elif col == 1 or col == 4 or col == 5:
+                    value = self.stringvars[row][col].get()
+                else:
+                    entries = self.frame_tabela_trajetoria.grid_slaves(row=row, column=col)
+                    if entries:
+                        entry = entries[0]
+                        value = entry.get()
+                    else:
+                        value = ""
+                values.append(value)
+            self.trajetorias[-1].append(values)  # Adiciona os valores à última trajetória na lista de trajetórias
+
+        # Armazenar a última linha preenchida para a trajetória atual
+        self.last_filled_rows_per_trajetoria[len(self.trajetorias) - 1] = last_filled_row
+
+        # Limpa os campos de entrada
+        for row in range(1, self.num_rows):
+            for col in range(6):
+                if col == 0:
+                    continue
+                elif col == 1 or col == 4 or col == 5:
+                    continue
+                else:
+                    entries = self.frame_tabela_trajetoria.grid_slaves(row=row, column=col)
+                    if entries:
+                        entry = entries[0]
+                        entry.delete(0, tk.END)
+
+    def salvar_finalizar_tabela(self):
+
+        trajetoria_atual = []  # Cria uma lista vazia para armazenar a trajetória atual
+
+        last_filled_row = self.get_last_filled_row()
+
+        # Obtém os valores inseridos pelo usuário e os imprime na tela
+        for row in range(1, self.num_rows):
+            values = []
+            for col in range(6):
+                if col == 0:
+                    value = self.frame_tabela_trajetoria.grid_slaves(row=row, column=col)[0].cget("text")
+                elif col == 1 or col == 4 or col == 5:
+                    value = self.stringvars[row][col].get()
+                else:
+                    entries = self.frame_tabela_trajetoria.grid_slaves(row=row, column=col)
+                    if entries:
+                        entry = entries[0]
+                        value = entry.get()
+                    else:
+                        value = ""
+                values.append(value)
+
+            trajetoria_atual.append(values)  # Adiciona a linha de valores à trajetória atual
+
+        self.trajetorias.append(trajetoria_atual)
+
+        # Armazenar a última linha preenchida para a trajetória atual
+        self.last_filled_rows_per_trajetoria[len(self.trajetorias) - 1] = last_filled_row
+
+        self.on_window_close()
+
+    def get_last_filled_row(self):
+
+        last_filled_row = None
+        # Itera as linhas em ordem reversa
+        for row in range(self.num_rows - 1, 0, -1):
+            entries = self.frame_tabela_trajetoria.grid_slaves(row=row, column=3)
+            if entries:  # se houver um Entry nesta célula
+                entry = entries[0]
+                value = entry.get()
+                if value:  # se o Entry não estiver vazio
+                    last_filled_row = row
+                    break
+        return last_filled_row
+
+    def on_window_close(self):
+        self.window_closed = True
+        self.master.destroy()
+
+    def run_DataInput(self):
+
+        self.get_user_input()
+        self.surveysimport()
+        self.ipmimport()
+        self.get_tie_on()
+        self.escolha_arquivos.destroy()
+        self.master.protocol("WM_DELETE_WINDOW", self.on_window_close)
+        self.master.mainloop()
+
+
+class MinimumCurvature(DataInput):
+    """
+    Esta classe é responsável por:
+    1 — Calcular as coordenadas (N, E, V) a partir dos dados direcionais (MD, Inc, Azi) provenientens dos surveys utilizando o método da mínima curvatura.
+    2 — Interpolar os surveys, para terem sempre dados em uma mesma profundidade.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        self.MDM = []
+        self.incM = []
+        self.azM = []
+
+        self.NpositionM = []
+        self.EpositionM = []
+        self.VpositionM = []
+        self.alphaM = []
+        self.fM = []
+
+        self.MDG = []
+        self.incG = []
+        self.azG = []
+
+        self.NpositionG = []
+        self.EpositionG = []
+        self.VpositionG = []
+        self.alphaG = []
+        self.fG = []
+
+        self.MDOMM = []
+        self.incOMM = []
+        self.azOMM = []
+
+        self.MDM_plot = []
+        self.incM_plot = []
+        self.azM_plot = []
+
+        self.MDG_plot = []
+        self.incG_plot = []
+        self.azG_plot = []
+
+        self.MDOMM_plot = []
+        self.incOMM_plot = []
+        self.azOMM_plot = []
+
+        self.NpositionOMM = []
+        self.EpositionOMM = []
+        self.VpositionOMM = []
+        self.alphaOMM = []
+        self.fOMM = []
+
+        self.NpositionM_plot = []
+        self.EpositionM_plot = []
+        self.VpositionM_plot = []
+
+        self.NpositionG_plot = []
+        self.EpositionG_plot = []
+        self.VpositionG_plot = []
+
+        self.NpositionOMM_plot = []
+        self.EpositionOMM_plot = []
+        self.VpositionOMM_plot = []
+
+        self.mdDSM = []
+        self.incDSM = []
+        self.azDSM = []
+        self.NpositionDSM = []
+        self.EpositionDSM = []
+        self.VpositionDSM = []
+        self.alphaDSM = []
+        self.fDSM = []
+
+        self.mdDSM_2 = []
+        self.incDSM_2 = []
+        self.azDSM_2 = []
+        self.NpositionDSM_2 = []
+        self.EpositionDSM_2 = []
+        self.VpositionDSM_2 = []
+        self.alphaDSM_2 = []
+        self.fDSM_2 = []
+
+        self.mdInterpolate_1 = []
+        self.incInterpolate_1 = []
+        self.azInterpolate_1 = []
+        self.alphaInterpolate_1 = []
+
+        self.mdInterpolate_2 = []
+        self.incInterpolate_2 = []
+        self.azInterpolate_2 = []
+        self.alphaInterpolate_2 = []
+
+        self.mdInt = float()
+        self.incInt = float()
+        self.azInt = float()
+        self.NpositionInt = float()
+        self.EpositionInt = float()
+        self.VpositionInt = float()
+        self.alphaInt = float()
+        self.fInt = float()
+
+    def definir_trajetorias(self):
+
+        for i in range(self.numero_comparacao):
+
+            # Reset the added depths set for each new trajectory
+            added_depths = set()
+            target_M, target_inc, target_az = [], [], []
+
+            for j in range(len(self.trajetorias[i])):
+
+                if self.trajetorias[i][j][2] and self.trajetorias[i][j][3]:  # Check if the cells are not empty
+
+                    md_initial = float(self.trajetorias[i][j][2])  # inicial depth
+                    md_final = float(self.trajetorias[i][j][3])  # final depth
+
+                    for z in range(len(self.survey_filenames)):
+                        if self.trajetorias[i][j][5] == self.survey_filenames[z]:
+                            survey_data = [(self.surveys[z]['M'][k],
+                                            self.surveys[z]['inc'][k],
+                                            self.surveys[z]['az'][k]) for k in range(len(self.surveys[z]['M'])) if
+                                           md_initial <= float(self.surveys[z]['M'][k]) <= md_final]
+
+                            for data in survey_data:
+                                if data[0] not in added_depths:  # Check if the depth has been added before
+                                    target_M.append(data[0])
+                                    target_inc.append(data[1])
+                                    target_az.append(data[2])
+                                    added_depths.add(data[0])  # Add the depth to the set of added depths
+
+                            # If this is the last row for the current trajectory, add the final depth point manually
+                            if j == self.last_filled_rows_per_trajetoria[i] and md_final not in added_depths:
+                                target_M.append(md_final)
+                                target_inc.append(self.surveys[z]['inc'][-1])
+                                target_az.append(self.surveys[z]['az'][-1])
+                                added_depths.add(md_final)
+
+            if i == 0:
+                self.MDM, self.incM, self.azM = target_M, target_inc, target_az
+            if i == 1:
+                self.MDG, self.incG, self.azG = target_M, target_inc, target_az
+            if i == 2:
+                self.MDOMM, self.incOMM, self.azOMM = target_M, target_inc, target_az
+
+        self.MDM_plot = np.copy(self.MDM)
+        self.incM_plot = np.copy(self.incM)
+        self.azM_plot = np.copy(self.azM)
+
+        self.MDG_plot = np.copy(self.MDG)
+        self.incG_plot = np.copy(self.incG)
+        self.azG_plot = np.copy(self.azG)
+
+        self.MDOMM_plot = np.copy(self.MDOMM)
+        self.incOMM_plot = np.copy(self.incOMM)
+        self.azOMM_plot = np.copy(self.azOMM)
+
+    def positioncalculate(self):
+
+        """
+        Método que calcula as coordenadas (N, E, V) a partir dos dados direcionais (MD, Inc, Azi) provenientens dos surveys
+        utilizando o método da mínima curvatura.
+        """
+
+        vertical_inicial_OMM = 0
+
+        if self.rkb != 0 and self.depthMSL != 0:
+
+            vertical_inicial_MWD = self.rkb + self.depthMSL
+            vertical_inicial_GWD = self.rkb + self.depthMSL
+
+        else:
+            vertical_inicial_MWD = self.MDM[0]
+            vertical_inicial_GWD = self.MDG[0]
+
+            if self.numero_comparacao == 3:
+                vertical_inicial_OMM = self.MDOMM[0]
+
+        self.NpositionM.append(0)
+        self.EpositionM.append(0)
+        self.VpositionM.append(vertical_inicial_MWD)
+
+        self.NpositionG.append(0)
+        self.EpositionG.append(0)
+        self.VpositionG.append(vertical_inicial_GWD)
+
+        self.NpositionOMM.append(0)
+        self.EpositionOMM.append(0)
+        self.VpositionOMM.append(vertical_inicial_OMM)
+
+        # Conversão para radianos
+        self.incM = [mt.radians(incm) for incm in self.incM]
+        self.azM = [mt.radians(azm) for azm in self.azM]
+
+        # Conversão para radianos
+        self.incG = [mt.radians(incg) for incg in self.incG]
+        self.azG = [mt.radians(azg) for azg in self.azG]
+
+
+        # Conversão para radianos
+        self.incOMM = [mt.radians(incOMM) for incOMM in self.incOMM]
+        self.azOMM = [mt.radians(azoOMM) for azoOMM in self.azOMM]
+
+        for i in range(len(self.MDM) - 1):
+
+            self.alphaM.append(2 * mt.asin(mt.sqrt(
+                mt.pow(mt.sin(self.incM[i + 1] - self.incM[i]) / 2, 2) + mt.sin(self.incM[i]) * mt.sin(
+                    self.incM[i + 1]) * mt.pow(mt.sin(self.azM[i + 1] - self.azM[i]) / 2, 2))))
+
+            self.alphaM[i] = mt.radians(self.alphaM[i])
+
+            if self.alphaM[i] >= 0.02:
+                self.fM.append(mt.tan(self.alphaM[i] / 2) / (self.alphaM[i] / 2))
+
+            if self.alphaM[i] < 0.02:
+                self.fM.append(1 + (mt.pow(self.alphaM[i], 2) / 12) * (1 + ((pow(self.alphaM[i], 2) / 10) * (
+                        1 + (pow(self.alphaM[i], 2) / 168) * (1 + (31 * (mt.pow(self.alphaM[i], 2)) / 2))))))
+
+            self.NpositionM.append(self.NpositionM[i] + ((self.MDM[i + 1] - self.MDM[i]) * self.fM[i] * (
+                    (mt.sin(self.incM[i]) * mt.cos(self.azM[i])) + (
+                    mt.sin(self.incM[i + 1]) * mt.cos(self.azM[i + 1])))) / 2)
+
+            self.EpositionM.append(self.EpositionM[i] + ((self.MDM[i + 1] - self.MDM[i]) * self.fM[i] * (
+                    (mt.sin(self.incM[i]) * mt.sin(self.azM[i])) + (
+                    mt.sin(self.incM[i + 1]) * mt.sin(self.azM[i + 1])))) / 2)
+
+            self.VpositionM.append(self.VpositionM[i] + ((self.MDM[i + 1] - self.MDM[i]) * self.fM[i] * (
+                    mt.cos(self.incM[i]) + mt.cos(self.incM[i + 1]))) / 2)
+
+        for i in range(len(self.MDG) - 1):
+
+            self.alphaG.append(2 * mt.asin(mt.sqrt(
+                mt.pow(mt.sin(self.incG[i + 1] - self.incG[i]) / 2, 2) + mt.sin(self.incG[i]) * mt.sin(
+                    self.incG[i + 1]) * mt.pow(mt.sin(self.azG[i + 1] - self.azG[i]) / 2, 2))))
+
+            self.alphaG[i] = mt.radians(self.alphaG[i])
+
+            if self.alphaG[i] >= 0.02:
+                self.fG.append(mt.tan(self.alphaG[i] / 2) / (self.alphaG[i] / 2))
+
+            if self.alphaG[i] < 0.02:
+                self.fG.append(1 + (mt.pow(self.alphaG[i], 2) / 12) * (1 + ((pow(self.alphaG[i], 2) / 10) * (
+                        1 + (pow(self.alphaG[i], 2) / 168) * (1 + (31 * (mt.pow(self.alphaG[i], 2)) / 2))))))
+
+            self.NpositionG.append(self.NpositionG[i] + ((self.MDG[i + 1] - self.MDG[i]) * self.fG[i] * (
+                    (mt.sin(self.incG[i]) * mt.cos(self.azG[i])) + (
+                    mt.sin(self.incG[i + 1]) * mt.cos(self.azG[i + 1])))) / 2)
+
+            self.EpositionG.append(self.EpositionG[i] + ((self.MDG[i + 1] - self.MDG[i]) * self.fG[i] * (
+                    (mt.sin(self.incG[i]) * mt.sin(self.azG[i])) + (
+                    mt.sin(self.incG[i + 1]) * mt.sin(self.azG[i + 1])))) / 2)
+
+            self.VpositionG.append(self.VpositionG[i] + ((self.MDG[i + 1] - self.MDG[i]) * self.fG[i] * (
+                    mt.cos(self.incG[i]) + mt.cos(self.incG[i + 1]))) / 2)
+
+        for i in range(len(self.MDOMM) - 1):
+
+            self.alphaOMM.append(2 * mt.asin(mt.sqrt(
+                mt.pow(mt.sin(self.incOMM[i + 1] - self.incOMM[i]) / 2, 2) + mt.sin(self.incOMM[i]) * mt.sin(
+                    self.incOMM[i + 1]) * mt.pow(mt.sin(self.azOMM[i + 1] - self.azOMM[i]) / 2, 2))))
+
+            self.alphaOMM[i] = mt.radians(self.alphaOMM[i])
+
+            if self.alphaOMM[i] >= 0.02:
+                self.fOMM.append(mt.tan(self.alphaOMM[i] / 2) / (self.alphaOMM[i] / 2))
+
+            if self.alphaOMM[i] < 0.02:
+                self.fOMM.append(1 + (mt.pow(self.alphaOMM[i], 2) / 12) * (1 + ((pow(self.alphaOMM[i], 2) / 10) * (
+                        1 + (pow(self.alphaOMM[i], 2) / 168) * (1 + (31 * (mt.pow(self.alphaOMM[i], 2)) / 2))))))
+
+            self.NpositionOMM.append(self.NpositionOMM[i] + ((self.MDOMM[i + 1] - self.MDOMM[i]) * self.fOMM[i] * (
+                    (mt.sin(self.incOMM[i]) * mt.cos(self.azOMM[i])) + (
+                    mt.sin(self.incOMM[i + 1]) * mt.cos(self.azOMM[i + 1])))) / 2)
+
+            self.EpositionOMM.append(self.EpositionOMM[i] + ((self.MDOMM[i + 1] - self.MDOMM[i]) * self.fOMM[i] * (
+                    (mt.sin(self.incOMM[i]) * mt.sin(self.azOMM[i])) + (
+                    mt.sin(self.incOMM[i + 1]) * mt.sin(self.azOMM[i + 1])))) / 2)
+
+            self.VpositionOMM.append(self.VpositionOMM[i] + ((self.MDOMM[i + 1] - self.MDOMM[i]) * self.fOMM[i] * (
+                    mt.cos(self.incOMM[i]) + mt.cos(self.incOMM[i + 1]))) / 2)
+
+        self.NpositionM = np.array(self.NpositionM)
+        self.EpositionM = np.array(self.EpositionM)
+        self.VpositionM = np.array(self.VpositionM)
+        self.alphaM = np.array(self.alphaM)
+        self.fM = np.array(self.fM)
+
+        self.NpositionG = np.array(self.NpositionG)
+        self.EpositionG = np.array(self.EpositionG)
+        self.VpositionG = np.array(self.VpositionG)
+        self.alphaG = np.array(self.alphaG)
+        self.fG = np.array(self.fG)
+
+        self.NpositionOMM = np.array(self.NpositionOMM)
+        self.EpositionOMM = np.array(self.EpositionOMM)
+        self.VpositionOMM = np.array(self.VpositionOMM)
+        self.alphaOMM = np.array(self.alphaOMM)
+        self.fOMM = np.array(self.fOMM)
+
+        self.NpositionM_plot = np.array(self.NpositionM)
+        self.EpositionM_plot = np.array(self.EpositionM)
+        self.VpositionM_plot = np.array(self.VpositionM)
+
+        self.NpositionG_plot = np.array(self.NpositionG)
+        self.EpositionG_plot = np.array(self.EpositionG)
+        self.VpositionG_plot = np.array(self.VpositionG)
+
+        self.NpositionOMM_plot = np.array(self.NpositionOMM)
+        self.EpositionOMM_plot = np.array(self.EpositionOMM)
+        self.VpositionOMM_plot = np.array(self.VpositionOMM)
+
+    def initialize_arrays_primeira_interpolacao(self, md, inc, az, alpha, Nposition, Eposition, Vposition, vpos_init):
+
+        self.mdDSM = np.array(md)
+        self.incDSM = np.zeros(len(inc))
+        self.azDSM = np.zeros(len(az))
+
+        self.alphaDSM = np.zeros(len(alpha))
+        self.fDSM = np.zeros(len(alpha))
+
+        self.NpositionDSM = np.zeros(len(Nposition))
+        self.EpositionDSM = np.zeros(len(Eposition))
+        self.VpositionDSM = np.zeros(len(Vposition))
+        self.VpositionDSM[0] = vpos_init
+
+    def initialize_arrays_segunda_interpolacao(self, md, inc, az, alpha, Nposition, Eposition, Vposition, vpos_init):
+
+        self.mdDSM_2 = np.array(md)
+        self.incDSM_2 = np.zeros(len(inc))
+        self.azDSM_2 = np.zeros(len(az))
+
+        self.alphaDSM_2 = np.zeros(len(alpha))
+        self.fDSM_2 = np.zeros(len(alpha))
+
+        self.NpositionDSM_2 = np.zeros(len(Nposition))
+        self.EpositionDSM_2 = np.zeros(len(Eposition))
+        self.VpositionDSM_2 = np.zeros(len(Vposition))
+        self.VpositionDSM_2[0] = vpos_init
+
+    def assign_values_primeira_interpolacao(self, md1, inc1, az1, f1):
+
+
+        print(len(md1))
+        print(len(self.mdDSM))
+
+        for i in range(len(md1)):
+
+            for j in range(len(self.mdDSM)):
+
+                if md1[i] == self.mdDSM[j]:
+                    self.incDSM[j] = inc1[i]
+                    self.azDSM[j] = az1[i]
+
+                    if j < len(self.fDSM):
+                        self.fDSM[j] = f1[i]
+
+    def assign_values_segunda_interpolacao(self, md1, inc1, az1, f1):
+
+        for i in range(len(md1)):
+
+            for j in range(len(self.mdDSM_2)):
+
+                if md1[i] == self.mdDSM_2[j]:
+                    self.incDSM_2[j] = inc1[i]
+                    self.azDSM_2[j] = az1[i]
+
+                    if j < len(self.fDSM_2):
+                        self.fDSM_2[j] = f1[i]
+
+    def estacoes_para_primeira_interpolacao(self, md1, inc1, az1, alpha1):
+
+        # Utilizo para popular variaveis auxiliares locais, assim não preciso fazer o mesmo código duas vezes
+        self.mdInterpolate_1 = np.array(md1)
+        self.incInterpolate_1 = np.array(inc1)
+        self.azInterpolate_1 = np.array(az1)
+        self.alphaInterpolate_1 = np.array(alpha1)
+
+    def estacoes_para_segunda_interpolacao(self, md1, inc1, az1, alpha2):
+
+        # Utilizo para popular variaveis auxiliares locais, assim não preciso fazer o mesmo código duas vezes
+        self.mdInterpolate_2 = np.array(md1)
+        self.incInterpolate_2 = np.array(inc1)
+        self.azInterpolate_2 = np.array(az1)
+        self.alphaInterpolate_2 = np.array(alpha2)
+
+    def escolher_profundidade(self):
+
+        md_final_min = 0
+
+        # Identificar a menor profundidade final
+        if self.numero_comparacao < 3:
+            md_final_min = min(self.MDM[-1], self.MDG[-1])
+
+        if self.numero_comparacao == 3:
+            md_final_min = min(self.MDM[-1], self.MDG[-1], self.MDOMM[-1])
+
+        if md_final_min == self.MDG[-1]:
+
+            self.initialize_arrays_primeira_interpolacao(self.MDG, self.incG, self.azG, self.alphaM, self.NpositionG,
+                                                         self.EpositionG, self.VpositionG, self.VpositionM[0])
+
+            self.assign_values_primeira_interpolacao(self.MDM, self.incM, self.azM, self.fM)
+
+            self.estacoes_para_primeira_interpolacao(self.MDM, self.incM, self.azM, self.alphaM)
+
+            if self.numero_comparacao == 3:
+                self.initialize_arrays_segunda_interpolacao(self.MDG, self.incG, self.azG, self.alphaOMM,
+                                                            self.NpositionG, self.EpositionG, self.VpositionOMM,
+                                                            self.VpositionOMM[0])
+
+                self.assign_values_segunda_interpolacao(self.MDOMM, self.incOMM, self.azOMM, self.fOMM)
+
+                self.estacoes_para_segunda_interpolacao(self.MDOMM, self.incOMM, self.azOMM, self.alphaOMM)
+
+        elif md_final_min == self.MDM[-1]:
+
+            self.initialize_arrays_primeira_interpolacao(self.MDM, self.incM, self.azM, self.alphaG, self.NpositionM,
+                                                         self.EpositionM, self.VpositionM, self.VpositionG[0])
+
+            self.assign_values_primeira_interpolacao(self.MDG, self.incG, self.azG, self.fG)
+
+            self.estacoes_para_primeira_interpolacao(self.MDG, self.incG, self.azG, self.alphaG)
+
+            if self.numero_comparacao == 3:
+                self.initialize_arrays_segunda_interpolacao(self.MDM, self.incM, self.azM, self.alphaOMM,
+                                                            self.NpositionM, self.EpositionM, self.VpositionOMM,
+                                                            self.VpositionOMM[0])
+
+                self.assign_values_segunda_interpolacao(self.MDOMM, self.incOMM, self.azOMM, self.fOMM)
+
+                self.estacoes_para_segunda_interpolacao(self.MDOMM, self.incOMM, self.azOMM, self.alphaOMM)
+
+        elif md_final_min == self.MDOMM[-1]:
+
+            self.initialize_arrays_primeira_interpolacao(self.MDOMM, self.incOMM, self.azOMM, self.alphaM,
+                                                         self.NpositionOMM,
+                                                         self.EpositionOMM, self.VpositionM, self.VpositionM[0])
+
+            self.assign_values_primeira_interpolacao(self.MDM, self.incM, self.azM, self.fM)
+
+            self.estacoes_para_primeira_interpolacao(self.MDM, self.incM, self.azM, self.alphaM)
+
+            if self.numero_comparacao == 3:
+                self.initialize_arrays_segunda_interpolacao(self.MDOMM, self.incOMM, self.azOMM, self.alphaG,
+                                                            self.NpositionOMM,
+                                                            self.EpositionOMM, self.VpositionG, self.VpositionG[0])
+
+                self.assign_values_segunda_interpolacao(self.MDG, self.incG, self.azG, self.fG)
+
+                self.estacoes_para_segunda_interpolacao(self.MDG, self.incG, self.azG, self.alphaG)
+
+    def interpolar_primeira_Md_Inc_Az(self):
+
+        mdauxiliar = float()
+
+        contagemIteracoes = []
+
+        # For que identifica as profundidades a serem interpoladas e calcula Alpha a ser interpolado (alphaDSM)
+        for i in range(len(self.mdInterpolate_1)):
+
+            for j in range(len(self.mdDSM)):
+
+                if (self.mdInterpolate_1[i] > self.mdDSM[j]) and (self.mdInterpolate_1[i - 1] < self.mdDSM[j]):
+                    mdauxiliar = self.mdDSM[j] - self.mdInterpolate_1[i - 1]
+
+            for j in range(len(self.mdDSM) - 1):
+
+                if (self.mdInterpolate_1[i] > self.mdDSM[j]) and (self.mdInterpolate_1[i - 1] < self.mdDSM[j]):
+
+                    # Calculo de alhpa* referente a pagina 4 do artigo SPE84246
+                    self.alphaDSM[j] = mt.radians(
+                        (mdauxiliar / (self.mdInterpolate_1[i] - self.mdInterpolate_1[i - 1])) *
+                        self.alphaInterpolate_1[i])
+
+                    contagemIteracoes.append(j)
+
+        for j in range(len(contagemIteracoes) + 1):
+
+            if self.alphaDSM[j] >= 0.02:
+                self.fDSM[j] = mt.tan(self.alphaDSM[j] / 2) / (self.alphaDSM[j] / 2)
+
+            if self.alphaDSM[j] < 0.02:
+                self.fDSM[j] = 1 + (mt.pow(self.alphaDSM[j], 2) / 12) \
+                               * (1 + ((pow(self.alphaDSM[j], 2) / 10) *
+                                       (1 + (pow(self.alphaDSM[j], 2) / 168) * (
+                                               1 + (31 * (mt.pow(self.alphaDSM[j], 2)) / 2)))))
+
+        for i in range(len(self.mdInterpolate_1)):
+
+            for j in range(len(self.mdDSM) - 1):
+
+                if (self.mdInterpolate_1[i] > self.mdDSM[j]) and (self.mdInterpolate_1[i - 1] < self.mdDSM[j]):
+
+                    if self.alphaDSM[j] > 0.0001:
+
+                        self.azDSM[j] = (mt.atan((((mt.sin(self.incInterpolate_1[i - 1]) * mt.sin(
+                            self.azInterpolate_1[i - 1]) * mt.sin(self.alphaInterpolate_1[i - 1] - self.alphaDSM[j])) +
+                                                   (mt.sin(self.incInterpolate_1[i]) * mt.sin(
+                                                       self.azInterpolate_1[i]) * mt.sin(
+                                                       self.alphaDSM[j])))
+                                                  /
+                                                  ((mt.sin(self.incInterpolate_1[i - 1]) * mt.cos(
+                                                      self.azInterpolate_1[i - 1]) * mt.sin(
+                                                      self.alphaInterpolate_1[i - 1] - self.alphaDSM[j])) +
+                                                   (mt.sin(self.incInterpolate_1[i]) * mt.cos(
+                                                       self.azInterpolate_1[i]) * mt.sin(
+                                                       self.alphaDSM[j]))))))
+
+                        self.incDSM[j] = (mt.acos(((mt.cos(self.incInterpolate_1[i]) - mt.cos(
+                            self.alphaInterpolate_1[i]) * mt.cos(self.incInterpolate_1[i - 1]) * mt.sin(
+                            self.alphaDSM[j])) + (
+                                                           mt.sin(self.alphaInterpolate_1[i]) * mt.cos(
+                                                       self.incInterpolate_1[i - 1])
+                                                           * mt.cos(self.alphaDSM[j])))
+                                                  / (mt.sin(self.alphaDSM[j]))))
+
+                    elif self.alphaDSM[j] < 0.0001:
+
+                        mdauxiliar = self.mdDSM[j] - self.mdInterpolate_1[i - 1]
+
+                        self.azDSM[j] = (self.azInterpolate_1[i - 1] + (
+                                mdauxiliar * (self.azInterpolate_1[i] - self.azInterpolate_1[i - 1]) / (
+                                self.mdInterpolate_1[i] - self.mdInterpolate_1[i - 1])))
+
+                        self.incDSM[j] = (self.incInterpolate_1[i - 1] + (
+                                mdauxiliar * (self.incInterpolate_1[i] - self.incInterpolate_1[i - 1]) / (
+                                self.mdInterpolate_1[i] - self.mdInterpolate_1[i - 1])))
+
+        if self.alphaDSM[-1] > 0.0001:
+
+            self.azDSM[-1] = (mt.atan((((mt.sin(self.incInterpolate_1[-2]) * mt.sin(
+                self.azInterpolate_1[-1]) * mt.sin(self.alphaInterpolate_1[-2] - self.alphaDSM[-1])) +
+                                        (mt.sin(self.incInterpolate_1[-1]) * mt.sin(
+                                            self.azInterpolate_1[-1]) * mt.sin(
+                                            self.alphaDSM[-1])))
+                                       /
+                                       ((mt.sin(self.incInterpolate_1[-2]) * mt.cos(
+                                           self.azInterpolate_1[-2]) * mt.sin(
+                                           self.alphaInterpolate_1[-2] - self.alphaDSM[-1])) +
+                                        (mt.sin(self.incInterpolate_1[-1]) * mt.cos(
+                                            self.azInterpolate_1[-1]) * mt.sin(
+                                            self.alphaDSM[-1]))))))
+
+            self.incDSM[-1] = (mt.acos(((mt.cos(self.incInterpolate_1[-1]) - mt.cos(
+                self.alphaInterpolate_1[-1]) * mt.cos(self.incInterpolate_1[-2]) * mt.sin(
+                self.alphaDSM[-1])) + (
+                                                mt.sin(self.alphaInterpolate_1[-1]) * mt.cos(
+                                            self.incInterpolate_1[-2])
+                                                * mt.cos(self.alphaDSM[-1])))
+                                       / (mt.sin(self.alphaDSM[-1]))))
+
+        elif self.alphaDSM[-1] < 0.0001:
+
+            mdauxiliar = self.mdDSM[-1] - self.mdInterpolate_1[-2]
+
+            self.azDSM[-1] = (self.azInterpolate_1[-2] + (
+                    mdauxiliar * (self.azInterpolate_1[-1] - self.azInterpolate_1[-2]) / (
+                    self.mdInterpolate_1[-1] - self.mdInterpolate_1[-2])))
+
+            self.incDSM[-1] = (self.incInterpolate_1[-2] + (
+                    mdauxiliar * (self.incInterpolate_1[-1] - self.incInterpolate_1[-2]) / (
+                    self.mdInterpolate_1[-1] - self.mdInterpolate_1[-2])))
+
+        for j in range(1, len(self.mdDSM)):
+            self.NpositionDSM[j] = (
+                        self.NpositionDSM[j - 1] + ((self.mdDSM[j] - self.mdDSM[j - 1]) * self.fDSM[j - 1] * (
+                        (mt.sin(self.incDSM[j - 1]) * mt.cos(self.azDSM[j - 1])) + (
+                        mt.sin(self.incDSM[j]) * mt.cos(self.azDSM[j])))) / 2)
+
+            self.EpositionDSM[j] = (
+                        self.EpositionDSM[j - 1] + ((self.mdDSM[j] - self.mdDSM[j - 1]) * self.fDSM[j - 1] * (
+                        (mt.sin(self.incDSM[j - 1]) * mt.sin(self.azDSM[j - 1])) + (
+                        mt.sin(self.incDSM[j]) * mt.sin(self.azDSM[j])))) / 2)
+
+            self.VpositionDSM[j] = (
+                        self.VpositionDSM[j - 1] + ((self.mdDSM[j] - self.mdDSM[j - 1]) * self.fDSM[j - 1] * (
+                        mt.cos(self.incDSM[j - 1]) + mt.cos(self.incDSM[j]))) / 2)
+
+        # Crie um DataFrame do panda com seus dados
+        data_NEV = {
+            'Profundidade Medida': self.mdDSM,
+            'Inclinação': [mt.degrees(inc) for inc in self.incDSM],
+            'Azimute': [mt.degrees(az) for az in self.azDSM],
+            'Norte (N)': self.NpositionDSM,
+            'Leste (E)': self.EpositionDSM,
+            'TVD': self.VpositionDSM,
+        }
+
+        # Obtenha o caminho para a área de trabalho do usuário atual
+        desktop = os.path.join(os.path.expanduser("~"), 'Desktop')
+
+        df_NEV = pd.DataFrame(data_NEV)
+
+        # Transponha o DataFrame para que as colunas se tornem linhas
+        # df_transposto = df_NEV.transpose()
+
+        # Especifique o nome do arquivo Excel de saída
+        file_path_NEV = os.path.join(desktop, 'NEV_Coordenadas.xlsx')
+
+        # Exporte os dados transpostos para um arquivo Excel
+        df_NEV.to_excel(file_path_NEV, header=True)
+
+    def interpolar_segunda_Md_Inc_Az(self):
+
+        mdauxiliar = float()
+
+        contagemIteracoes = []
+
+        # For que identifica as profundidades a serem interpoladas e calcula Alpha a ser interpolado (alphaDSM_2)
+        for i in range(len(self.mdInterpolate_2)):
+
+            for j in range(len(self.mdDSM_2)):
+
+                if (self.mdInterpolate_2[i] > self.mdDSM_2[j]) and (self.mdInterpolate_2[i - 1] < self.mdDSM_2[j]):
+                    mdauxiliar = self.mdDSM_2[j] - self.mdInterpolate_2[i - 1]
+
+            for j in range(len(self.mdDSM_2) - 1):
+
+                if (self.mdInterpolate_2[i] > self.mdDSM_2[j]) and (self.mdInterpolate_2[i - 1] < self.mdDSM_2[j]):
+                    # Calculo de alhpa* referente a pagina 4 do artigo SPE84246
+                    self.alphaDSM_2[j] = mt.radians(
+                        (mdauxiliar / (self.mdInterpolate_2[i] - self.mdInterpolate_2[i - 1])) *
+                        self.alphaInterpolate_2[i])
+
+                    contagemIteracoes.append(j)
+
+        for j in contagemIteracoes:
+
+            if self.alphaDSM_2[j] >= 0.02:
+                self.fDSM_2[j] = mt.tan(self.alphaDSM_2[j] / 2) / (self.alphaDSM_2[j] / 2)
+
+            if self.alphaDSM_2[j] < 0.02:
+                self.fDSM_2[j] = 1 + (mt.pow(self.alphaDSM_2[j], 2) / 12) \
+                                 * (1 + ((pow(self.alphaDSM_2[j], 2) / 10) *
+                                         (1 + (pow(self.alphaDSM_2[j], 2) / 168) * (
+                                                 1 + (31 * (mt.pow(self.alphaDSM_2[j], 2)) / 2)))))
+
+        for i in range(len(self.mdInterpolate_2)):
+
+            for j in contagemIteracoes:
+
+                if (self.mdInterpolate_2[i] > self.mdDSM_2[j]) and (self.mdInterpolate_2[i - 1] < self.mdDSM_2[j]):
+
+                    if self.alphaDSM_2[j] > 0.0001:
+
+                        self.azDSM_2[j] = (mt.atan((((mt.sin(self.incInterpolate_2[i - 1]) * mt.sin(
+                            self.azInterpolate_2[i - 1]) * mt.sin(
+                            self.alphaInterpolate_2[i - 1] - self.alphaDSM_2[j])) +
+                                                     (mt.sin(self.incInterpolate_2[i]) * mt.sin(
+                                                         self.azInterpolate_2[i]) * mt.sin(
+                                                         self.alphaDSM_2[j])))
+                                                    /
+                                                    ((mt.sin(self.incInterpolate_2[i - 1]) * mt.cos(
+                                                        self.azInterpolate_2[i - 1]) * mt.sin(
+                                                        self.alphaInterpolate_2[i - 1] - self.alphaDSM_2[j])) +
+                                                     (mt.sin(self.incInterpolate_2[i]) * mt.cos(
+                                                         self.azInterpolate_2[i]) * mt.sin(
+                                                         self.alphaDSM_2[j]))))))
+
+                        self.incDSM_2[j] = (mt.acos(((mt.cos(self.incInterpolate_2[i]) - mt.cos(
+                            self.alphaInterpolate_2[i]) * mt.cos(self.incInterpolate_2[i - 1]) * mt.sin(
+                            self.alphaDSM_2[j])) + (
+                                                             mt.sin(self.alphaInterpolate_2[i]) * mt.cos(
+                                                         self.incInterpolate_2[i - 1])
+                                                             * mt.cos(self.alphaDSM_2[j])))
+                                                    / (mt.sin(self.alphaDSM_2[j]))))
+
+                    elif self.alphaDSM_2[j] < 0.0001:
+
+                        mdauxiliar = self.mdDSM_2[j] - self.mdInterpolate_2[i - 1]
+
+                        self.azDSM_2[j] = (self.azInterpolate_2[i - 1] + (
+                                mdauxiliar * (self.azInterpolate_2[i] - self.azInterpolate_2[i - 1]) / (
+                                self.mdInterpolate_2[i] - self.mdInterpolate_2[i - 1])))
+
+                        self.incDSM_2[j] = (self.incInterpolate_2[i - 1] + (
+                                mdauxiliar * (self.incInterpolate_2[i] - self.incInterpolate_2[i - 1]) / (
+                                self.mdInterpolate_2[i] - self.mdInterpolate_2[i - 1])))
+
+        if self.alphaDSM[-1] > 0.0001:
+
+            self.azDSM_2[-1] = (mt.atan((((mt.sin(self.incInterpolate_2[-2]) * mt.sin(
+                self.azInterpolate_2[-1]) * mt.sin(self.alphaInterpolate_2[-2] - self.alphaDSM_2[-1])) +
+                                          (mt.sin(self.incInterpolate_2[-1]) * mt.sin(
+                                              self.azInterpolate_2[-1]) * mt.sin(
+                                              self.alphaDSM_2[-1])))
+                                         /
+                                         ((mt.sin(self.incInterpolate_2[-2]) * mt.cos(
+                                             self.azInterpolate_2[-2]) * mt.sin(
+                                             self.alphaInterpolate_2[-2] - self.alphaDSM_2[-1])) +
+                                          (mt.sin(self.incInterpolate_2[-1]) * mt.cos(
+                                              self.azInterpolate_2[-1]) * mt.sin(
+                                              self.alphaDSM_2[-1]))))))
+
+            self.incDSM_2[-1] = (mt.acos(((mt.cos(self.incInterpolate_2[-1]) - mt.cos(
+                self.alphaInterpolate_2[-1]) * mt.cos(self.incInterpolate_2[-2]) * mt.sin(
+                self.alphaDSM_2[-1])) + (
+                                                  mt.sin(self.alphaInterpolate_2[-1]) * mt.cos(
+                                              self.incInterpolate_2[-2])
+                                                  * mt.cos(self.alphaDSM_2[-1])))
+                                         / (mt.sin(self.alphaDSM_2[-1]))))
+
+        elif self.alphaDSM[-1] < 0.0001:
+
+            mdauxiliar = self.mdDSM_2[-1] - self.mdInterpolate_2[-2]
+
+            self.azDSM_2[-1] = (self.azInterpolate_2[-2] + (
+                    mdauxiliar * (self.azInterpolate_2[-1] - self.azInterpolate_2[-2]) / (
+                    self.mdInterpolate_2[-1] - self.mdInterpolate_2[-2])))
+
+            self.incDSM_2[-1] = (self.incInterpolate_2[-2] + (
+                    mdauxiliar * (self.incInterpolate_2[-1] - self.incInterpolate_2[-2]) / (
+                    self.mdInterpolate_2[-1] - self.mdInterpolate_2[-2])))
+
+        for j in range(1, len(self.mdDSM_2)):
+            self.NpositionDSM_2[j] = (
+                    self.NpositionDSM_2[j - 1] + ((self.mdDSM_2[j] - self.mdDSM_2[j - 1]) * self.fDSM_2[j - 1] * (
+                    (mt.sin(self.incDSM_2[j - 1]) * mt.cos(self.azDSM_2[j - 1])) + (
+                    mt.sin(self.incDSM_2[j]) * mt.cos(self.azDSM_2[j])))) / 2)
+
+            self.EpositionDSM_2[j] = (
+                    self.EpositionDSM_2[j - 1] + ((self.mdDSM_2[j] - self.mdDSM_2[j - 1]) * self.fDSM_2[j - 1] * (
+                    (mt.sin(self.incDSM_2[j - 1]) * mt.sin(self.azDSM_2[j - 1])) + (
+                    mt.sin(self.incDSM_2[j]) * mt.sin(self.azDSM_2[j])))) / 2)
+
+            self.VpositionDSM_2[j] = (
+                    self.VpositionDSM_2[j - 1] + ((self.mdDSM_2[j] - self.mdDSM_2[j - 1]) * self.fDSM_2[j - 1] * (
+                    mt.cos(self.incDSM_2[j - 1]) + mt.cos(self.incDSM_2[j]))) / 2)
+
+    def interpolar_ultima_estacao(self, md_interpolar, inc_interpolar, az_interpolar, N_interpolar, E_interpolar, tvd_interpolar, mdDSM, incDSM, azDSM, N_DSM, E_DSM, tvd_DSM):
+
+        indices_a_remover = [i for i in range(len(md_interpolar)) if md_interpolar[i] > mdDSM[-1]]
+
+        print(f'\nindices_a_remover e: {indices_a_remover}\n')
+
+        for i in reversed(indices_a_remover):
+
+            if md_interpolar[i] > mdDSM[-1]:
+
+                md_interpolar = np.delete(md_interpolar, i)
+                inc_interpolar = np.delete(inc_interpolar, i)
+                az_interpolar = np.delete(az_interpolar, i)
+                N_interpolar = np.delete(N_interpolar, i)
+                E_interpolar = np.delete(E_interpolar, i)
+                tvd_interpolar = np.delete(tvd_interpolar, i)
+
+        md_interpolar = np.append(md_interpolar, mdDSM[-1])
+        inc_interpolar = np.append(inc_interpolar, incDSM[-1])
+        az_interpolar = np.append(az_interpolar, azDSM[-1])
+        N_interpolar = np.append(N_interpolar, N_DSM[-1])
+        E_interpolar = np.append(E_interpolar, E_DSM[-1])
+        tvd_interpolar = np.append(tvd_interpolar, tvd_DSM[-1])
+
+        return md_interpolar, inc_interpolar, az_interpolar, N_interpolar, E_interpolar, tvd_interpolar
+
+    def run_MinimumCurvature(self):
+
+        super().run_DataInput()
+        if not self.window_closed:
+            self.on_window_close()
+
+        self.definir_trajetorias()
+        self.positioncalculate()
+        self.escolher_profundidade()
+        self.interpolar_primeira_Md_Inc_Az()
+
+        if self.numero_comparacao == 3:
+            self.interpolar_segunda_Md_Inc_Az()
+
+        # Identificar a menor profundidade final
+        if self.numero_comparacao < 3:
+            md_final_min = min(self.MDM[-1], self.MDG[-1])
+
+        elif self.numero_comparacao >= 3:
+            md_final_min = min(self.MDM[-1], self.MDG[-1], self.MDOMM[-1])
+
+        if md_final_min == self.MDM[-1]:
+            self.MDG, self.incG, self.azG, self.NpositionG, self.EpositionG, self.VpositionG = self.interpolar_ultima_estacao(self.MDG, self.incG, self.azG, self.NpositionG, self.EpositionG, self.VpositionG, self.mdDSM, self.incDSM, self.azDSM, self.NpositionDSM, self.EpositionDSM, self.VpositionDSM)
+
+        elif md_final_min == self.MDG[-1]:
+            self.MDM, self.incM, self.azM, self.NpositionM, self.EpositionM, self.VpositionM = self.interpolar_ultima_estacao(self.MDM, self.incM, self.azM, self.NpositionM, self.EpositionM, self.VpositionM, self.mdDSM, self.incDSM, self.azDSM, self.NpositionDSM, self.EpositionDSM, self.VpositionDSM)
+
+
+class ModeloErro(MinimumCurvature):
+
+    def __init__(self):
+        super().__init__()
+
+        self.tie_on_DSM = []
+        self.valueDSM = []
+        self.errorDSM = []
+        self.formulaDSM = []
+        self.vectorDSM = []
+        self.unitDSM = []
+
+        self.drdp_MWD = []
+        self.drdp_interest_MWD = []
+
+        self.drdp_GWD = []
+        self.drdp_interest_GWD = []
+
+        self.drdp_OMM = []
+        self.drdp_interest_OMM = []
+
+        self.drdp_DSM = []
+        self.drdp_interest_DSM = []
+
+        self.drdp_DSM_2 = []
+        self.drdp_interest_DSM_2 = []
+
+        self.true_azimuth = []
+        self.magnetic_azimuth = []
+
+        self.dic_erro_MWD = {}
+        self.dic_erro_GWD = {}
+        self.dic_erro_OMM = {}
+        self.dic_erro_DSM = {}
+
+        self.autoval_MWD = []
+        self.autovec_MWD = []
+
+        self.autoval_GWD = []
+        self.autovec_GWD = []
+
+        self.autoval_OMM = []
+        self.autovec_OMM = []
+
+        self.autoval_DSM = []
+        self.autovec_DSM = []
+
+        self.total_cov_matrix_GWD = []
+        self.total_cov_matrix_MWD = []
+        self.total_cov_matrix_OMM = []
+        self.total_cov_matrix_DSM = []
+
+        self.total_cov_HLA = []
+
+    def initialize_variables(self):
+
+        # Identificar a menor profundidade final
+        if self.numero_comparacao < 3:
+            md_final_min = min(self.MDM[-1], self.MDG[-1])
+
+        if self.numero_comparacao >= 3:
+            md_final_min = min(self.MDM[-1], self.MDG[-1], self.MDOMM[-1])
+
+        if md_final_min == self.MDG[-1]:
+
+            self.tie_on_DSM = list(self.tie_on_M)
+            self.valueDSM = list(self.valueM)
+            self.errorDSM = list(self.errorM)
+            self.formulaDSM = list(self.formulaM)
+            self.vectorDSM = list(self.vectorM)
+            self.unitDSM = list(self.unitM)
+
+        elif md_final_min == self.MDM[-1]:
+
+            self.tie_on_DSM = list(self.tie_on_G)
+            self.valueDSM = list(self.valueG)
+            self.errorDSM = list(self.errorG)
+            self.formulaDSM = list(self.formulaG)
+            self.vectorDSM = list(self.vectorG)
+            self.unitDSM = list(self.unitG)
+
+        self.drdp_MWD = np.zeros((len(self.MDM), 3, 3))
+        self.drdp_interest_MWD = np.zeros((len(self.MDM), 3, 3))
+
+        self.drdp_GWD = np.zeros((len(self.MDG), 3, 3))
+        self.drdp_interest_GWD = np.zeros((len(self.MDG), 3, 3))
+
+        self.drdp_OMM = np.zeros((len(self.MDOMM), 3, 3))
+        self.drdp_interest_OMM = np.zeros((len(self.MDOMM), 3, 3))
+
+        self.drdp_DSM = np.zeros((len(self.mdDSM), 3, 3))
+        self.drdp_interest_DSM = np.zeros((len(self.mdDSM), 3, 3))
+
+        self.drdp_DSM_2 = np.zeros((len(self.mdDSM_2), 3, 3))
+        self.drdp_interest_DSM_2 = np.zeros((len(self.mdDSM_2), 3, 3))
+
+        self.total_cov_matrix_GWD = np.zeros((len(self.MDG), 3, 3))
+        self.total_cov_matrix_MWD = np.zeros((len(self.MDM), 3, 3))
+        self.total_cov_matrix_OMM = np.zeros((len(self.MDOMM), 3, 3))
+        self.total_cov_matrix_DSM = np.zeros((len(self.mdDSM), 3, 3))
+
+    def Effect_Survey_Errors(self, md, inc, azi):
+
+        start_time = timeit.default_timer()
+
+        drdDM = np.zeros((len(md), 3, 1))
+        drdIM = np.zeros((len(md), 3, 1))
+        drdAM = np.zeros((len(md), 3, 1))
+
+        drdDM1 = np.zeros((len(md), 3, 1))
+        drdIM1 = np.zeros((len(md), 3, 1))
+        drdAM1 = np.zeros((len(md), 3, 1))
+
+        drdp = np.zeros((len(md), 3, 3))
+        drdp_interest = np.zeros((len(md), 3, 3))
+
+        drdDM[0][0][0] = 0
+
+        drdDM[0][1][0] = 0
+
+        drdDM[0][2][0] = 0
+
+        drdIM[0][0][0] = 0
+
+        drdIM[0][1][0] = 0
+
+        drdIM[0][2][0] = 0
+
+        drdAM[0][0][0] = 0
+
+        drdAM[0][1][0] = 0
+
+        drdAM[0][2][0] = 0
+
+        for i in range(1, len(md)):
+
+            if i == 1:
+
+                drdDM[i][0][0] = 0.5 * ((mt.sin(inc[i - 1]) * mt.cos(azi[i - 1])) + (
+                        mt.sin(inc[i]) * mt.cos(azi[i])))
+
+                drdDM[i][1][0] = 0.5 * ((mt.sin(inc[i - 1]) * mt.sin(azi[i - 1])) + (
+                        mt.sin(inc[i]) * mt.sin(azi[i])))
+
+                drdDM[i][2][0] = 0.5 * ((mt.cos(inc[i - 1])) + (mt.cos(inc[i])))
+
+                drdIM[i][0][0] = 0.5 * (
+                        ((md[i] - md[i - 1]) * mt.cos(inc[i])) * mt.cos(azi[i])) * 2
+
+                drdIM[i][1][0] = 0.5 * (
+                        ((md[i] - md[i - 1]) * mt.cos(inc[i])) * mt.sin(azi[i])) * 2
+
+                drdIM[i][2][0] = 0.5 * (-1) * ((md[i] - md[i - 1]) * mt.sin(inc[i])) * 2
+
+                drdAM[i][0][0] = 0.5 * (-1) * (
+                        ((md[i] - md[i - 1]) * mt.sin(inc[i])) * mt.sin(azi[i])) * 2
+
+                drdAM[i][1][0] = 0.5 * (
+                        ((md[i] - md[i - 1]) * mt.sin(inc[i])) * mt.cos(azi[i])) * 2
+
+                drdAM[i][2][0] = 0.5 * 0 * 2
+
+            else:
+
+                drdDM[i][0][0] = 0.5 * ((mt.sin(inc[i - 1]) * mt.cos(azi[i - 1])) + (
+                        mt.sin(inc[i]) * mt.cos(azi[i])))
+
+                drdDM[i][1][0] = 0.5 * ((mt.sin(inc[i - 1]) * mt.sin(azi[i - 1])) + (
+                        mt.sin(inc[i]) * mt.sin(azi[i])))
+
+                drdDM[i][2][0] = 0.5 * ((mt.cos(inc[i - 1])) + (mt.cos(inc[i])))
+
+                drdIM[i][0][0] = 0.5 * (
+                        ((md[i] - md[i - 1]) * mt.cos(inc[i])) * mt.cos(azi[i]))
+
+                drdIM[i][1][0] = 0.5 * (
+                        ((md[i] - md[i - 1]) * mt.cos(inc[i])) * mt.sin(azi[i]))
+
+                drdIM[i][2][0] = 0.5 * (-1) * ((md[i] - md[i - 1]) * mt.sin(inc[i]))
+
+                drdAM[i][0][0] = 0.5 * (-1) * (
+                        ((md[i] - md[i - 1]) * mt.sin(inc[i])) * mt.sin(azi[i]))
+
+                drdAM[i][1][0] = 0.5 * (
+                        ((md[i] - md[i - 1]) * mt.sin(inc[i])) * mt.cos(azi[i]))
+
+                drdAM[i][2][0] = 0.5 * 0
+
+            drdp_interest[i][0][0] = drdDM[i][0][0]
+            drdp_interest[i][1][0] = drdDM[i][1][0]
+            drdp_interest[i][2][0] = drdDM[i][2][0]
+
+            drdp_interest[i][0][1] = drdIM[i][0][0]
+            drdp_interest[i][1][1] = drdIM[i][1][0]
+            drdp_interest[i][2][1] = drdIM[i][2][0]
+
+            drdp_interest[i][0][2] = drdAM[i][0][0]
+            drdp_interest[i][1][2] = drdAM[i][1][0]
+            drdp_interest[i][2][2] = drdAM[i][2][0]
+
+        for i in range(0, len(md) - 1):
+
+            if md[i] == 0:
+
+                drdDM1[i][0][0] = 0
+
+                drdDM1[i][1][0] = 0
+
+                drdDM1[i][2][0] = 0
+
+                drdIM1[i][0][0] = 0
+
+                drdIM1[i][1][0] = 0
+
+                drdIM1[i][2][0] = 0
+
+                drdAM1[i][0][0] = 0
+
+                drdAM1[i][1][0] = 0
+
+                drdAM1[i][2][0] = 0
+
+            else:
+
+                drdDM1[i][0][0] = 0.5 * ((- mt.sin(inc[i]) * mt.cos(azi[i])) - (
+                        mt.sin(inc[i + 1]) * mt.cos(azi[i + 1])))
+
+                drdDM1[i][1][0] = 0.5 * ((- mt.sin(inc[i]) * mt.sin(azi[i])) - (
+                        mt.sin(inc[i + 1]) * mt.sin(azi[i + 1])))
+
+                drdDM1[i][2][0] = 0.5 * ((- mt.cos(inc[i])) - (mt.cos(inc[i + 1])))
+
+                drdIM1[i][0][0] = 0.5 * (
+                        ((md[i + 1] - md[i]) * mt.cos(inc[i])) * mt.cos(azi[i]))
+
+                drdIM1[i][1][0] = 0.5 * (
+                        ((md[i + 1] - md[i]) * mt.cos(inc[i])) * mt.sin(azi[i]))
+
+                drdIM1[i][2][0] = 0.5 * (-1) * ((md[i + 1] - md[i]) * mt.sin(inc[i]))
+
+                drdAM1[i][0][0] = 0.5 * (-1) * (((md[i + 1] - md[i]) * mt.sin(inc[i])) * mt.sin(azi[i]))
+
+                drdAM1[i][1][0] = 0.5 * (
+                        ((md[i + 1] - md[i]) * mt.sin(inc[i])) * mt.cos(azi[i]))
+
+                drdAM1[i][2][0] = 0.5 * 0
+
+            drdp[i][0][0] = drdDM[i][0][0] + drdDM1[i][0][0]
+            drdp[i][1][0] = drdDM[i][1][0] + drdDM1[i][1][0]
+            drdp[i][2][0] = drdDM[i][2][0] + drdDM1[i][2][0]
+
+            drdp[i][0][1] = drdIM[i][0][0] + drdIM1[i][0][0]
+            drdp[i][1][1] = drdIM[i][1][0] + drdIM1[i][1][0]
+            drdp[i][2][1] = drdIM[i][2][0] + drdIM1[i][2][0]
+
+            drdp[i][0][2] = drdAM[i][0][0] + drdAM1[i][0][0]
+            drdp[i][1][2] = drdAM[i][1][0] + drdAM1[i][1][0]
+            drdp[i][2][2] = drdAM[i][2][0] + drdAM1[i][2][0]
+
+        drdp[len(md) - 1][0][0] = drdDM[len(md) - 1][0][0] + drdDM1[len(md) - 1][0][0]
+        drdp[len(md) - 1][1][0] = drdDM[len(md) - 1][1][0] + drdDM1[len(md) - 1][1][0]
+        drdp[len(md) - 1][2][0] = drdDM[len(md) - 1][2][0] + drdDM1[len(md) - 1][2][0]
+
+        drdp[len(md) - 1][0][1] = drdIM[len(md) - 1][0][0] + drdIM1[len(md) - 1][0][0]
+        drdp[len(md) - 1][1][1] = drdIM[len(md) - 1][1][0] + drdIM1[len(md) - 1][1][0]
+        drdp[len(md) - 1][2][1] = drdIM[len(md) - 1][2][0] + drdIM1[len(md) - 1][2][0]
+
+        drdp[len(md) - 1][0][2] = drdAM[len(md) - 1][0][0] + drdAM1[len(md) - 1][0][0]
+        drdp[len(md) - 1][1][2] = drdAM[len(md) - 1][1][0] + drdAM1[len(md) - 1][1][0]
+        drdp[len(md) - 1][2][2] = drdAM[len(md) - 1][2][0] + drdAM1[len(md) - 1][2][0]
+
+        elapsed_time = timeit.default_timer() - start_time
+        print(f"Tempo de execução de Effect_Survey_Errors: {elapsed_time} segundos")
+
+        # Obtenha o caminho para a área de trabalho do usuário atual
+        desktop = os.path.join(os.path.expanduser("~"), 'Desktop')
+
+        # Crie o caminho completo para o arquivo Excel
+        file_path = os.path.join(desktop, 'Effect_Survey_Errors.xlsx')
+
+        # Criando DataFrame a partir de drdp
+        df_efeito_survey = pd.DataFrame([item for sublist in drdp for item in sublist])
+
+        df_drdp_interest = pd.DataFrame([item for sublist in drdp_interest for item in sublist])
+
+        # Convertendo as variáveis para dataframes
+        df_drdDM = pd.DataFrame([item for sublist in drdDM for item in sublist])
+
+        df_drdDM1 = pd.DataFrame([item for sublist in drdDM1 for item in sublist])
+
+        df_drdIM = pd.DataFrame([item for sublist in drdIM for item in sublist])
+        df_drdIM1 = pd.DataFrame([item for sublist in drdIM1 for item in sublist])
+
+        df_drdAM = pd.DataFrame([item for sublist in drdAM for item in sublist])
+        df_drdAM1 = pd.DataFrame([item for sublist in drdAM1 for item in sublist])
+
+        # Combine todos os dataframes em um único dataframe
+        df_all = pd.concat(
+            [df_drdDM, df_drdDM1, df_drdIM, df_drdIM1, df_drdAM, df_drdAM1, df_efeito_survey, df_drdp_interest], axis=1)
+
+        # Definindo os nomes das colunas
+        df_all.columns = ['drdDM', 'drdDM1', 'drdIM', 'drdIM1', 'drdAM', 'drdAM1', 'drdp_MD', 'drdp_Inc', 'drdp_Az',
+                          'drdp_interest_MD', 'drdp_interest_Inc', 'drdp_interest_Az']
+
+        # Salvando DataFrame para um arquivo Excel
+        df_all.to_excel(file_path, index=False)
+
+        return drdp, drdp_interest
+
+    @staticmethod
+    def evaluate_formula(formula, var_dict):
+
+        sympy_formula = sp.sympify(formula, evaluate=False)
+        result = sympy_formula.subs(var_dict)
+
+        return result.evalf(4, subs=var_dict)
+
+    def singular_funcions(self, dic_erro, md, var_dict, key, i, linha, tie_on_value, values_linha,
+                          position_uncertainty_error, position_uncertainty_error_interest, result_values):
+
+        north_value, east_value, vertical_value = 0, 0, 0  # valores padrão
+
+        if key in ["abxy_ti2", "abixy_ti2", "ABXY-TI2S"]:
+
+            azt = var_dict["azt"]
+            gtot = var_dict["gtot"]
+
+            north_value = -np.sin(azt) / gtot
+            east_value = np.cos(azt) / gtot
+
+        elif key in ["xym3", "XYM3E"]:  # , "mxy3"
+            north_value = 1
+
+        elif key in ["xym4", "XYM4E"]:  # , "mxy4"
+            east_value = 1
+
+        elif key in ["xym3e", "mxy3", "xymr3"]:
+            north_value = var_dict["M"]
+
+        elif key in ["xym4e", "mxy4", "xymr4"]:
+            east_value = var_dict["M"]
+
+        weighting_functions = [north_value, east_value, vertical_value]
+
+        weighting_functions = np.array(np.copy(weighting_functions)).reshape(-1, 1)
+
+        # Cria uma lista do dicionárioi se a chave não existir
+        if key not in dic_erro:
+            dic_erro[key] = []
+
+        if md[i] == 0:
+
+            drdp = 0
+            drdp_interest = 0
+
+        elif i == 0:
+
+            drdp = 0
+            drdp_interest = 0
+
+        elif i == 1:
+
+            drdp = values_linha * (md[i + 1] + md[i] - (2 * md[i - 1])) / 2
+
+            drdp_interest = values_linha * 2 * (md[i] - md[i - 1]) / 2
+
+        else:
+
+            drdp = values_linha * (md[i + 1] - md[i - 1]) / 2
+            drdp_interest = values_linha * (md[i] - md[i - 1]) / 2
+
+        position_uncertainty_error[linha] = np.zeros((3, 1))
+        position_uncertainty_error_interest[linha] = np.zeros((3, 1))
+
+        position_uncertainty_error[linha] = np.dot(drdp, weighting_functions)
+        position_uncertainty_error_interest[linha] = np.dot(drdp_interest, weighting_functions)
+
+        dic_erro[key].append(
+            [tie_on_value, np.copy(weighting_functions), np.copy(position_uncertainty_error[linha]),
+             np.copy(position_uncertainty_error_interest[linha])])
+
+        return dic_erro[key]
+
+    def CourseLength_funcions(self, i, md, var_dict, key, drdp_courseLength):
+
+        inc = var_dict["inc"]
+        azi = var_dict["azi"]
+
+        if i == 0:
+            drdp_courseLength[i] = 0
+
+        else:
+            if key in ["xcly", "xclh", "XCLH"]:
+                drdp_courseLength[i][0][0] = np.cos(inc) * np.cos(azi)
+                drdp_courseLength[i][1][0] = np.cos(inc) * np.sin(azi)
+                drdp_courseLength[i][2][0] = -np.sin(inc)
+
+            if key in ["xclx", "xcla", "XCLL", "XCLA"]:
+                drdp_courseLength[i][0][0] = -np.sin(azi)
+                drdp_courseLength[i][1][0] = np.cos(azi)
+                drdp_courseLength[i][2][0] = 0
+
+        return drdp_courseLength[i]
+
+    def weighting_functions_calculator(self, inc, azi, md, tvd, tie_on, values, errors, formulas, vectors, unidade,
+                                       drdp, drdp_interest):
+
+        start_time = timeit.default_timer()
+
+        dic_erro = {}
+
+        drdp_courseLength = np.zeros((len(md), 3, 1))
+        drdp_courseLength_x = np.zeros((len(md), 3, 1))
+        drdp_courseLength_y = np.zeros((len(md), 3, 1))
+
+        # Cria um dicionário para rastrear as profundidades processadas para cada chave
+        profundidades_processadas = {}
+
+        # Criação da lista para cálculo das funções de peso e vetor de posição de incerteza
+        weighting_functions = np.zeros((len(md), 3, 1))
+        total_weighting_functions = np.zeros((len(md), 2))
+        position_uncertainty_error = np.zeros((len(md), 3, 1))
+        position_uncertainty_error_interest = np.zeros((len(md), 3, 1))
+
+        self.true_azimuth = np.zeros(len(md))
+        self.magnetic_azimuth = np.zeros(len(md))
+
+        # Cálculo e inicialização padrão para váriaveis auxiliares
+        tort = 1 / 30
+
+        # Criação e cálculo das variaveis auxiliares para cálculo da diferença entre MD, Inclinação, Azimute entre as estações com o mesmo nome do arquivo .txt do modelo de erro
+        dmd = np.diff(md, prepend=md[0])
+        smd = np.copy(dmd)  # é uma cópia de dmd
+        din = np.diff(inc, prepend=inc[0])
+        daz = np.diff(np.degrees(azi), prepend=np.degrees(azi[0]))
+
+        # Seguindo as regras da página 34 do documento "definition-of-iscwsa-error-model-v5-11"
+        # 1. e 2. correção da descontinuidade do azimute e garantir que daz é o menor valor possível
+        daz[daz > 180] -= 360
+        daz[daz < -180] += 360
+
+        daz = np.radians(daz)
+
+        M = np.zeros(len(md))
+        Lmin = 10
+
+        # Calculo padrão das variaveis auxiliares do cálculo das funções de peso de desalinhamento
+        w_12 = np.abs(np.sin(inc))
+        w_34 = np.abs(np.cos(inc))
+
+        for i, unit in enumerate(unidade):
+            if 'd' in unit:
+                values[i] = mt.radians(float(values[i]))
+            if 'im' in unit:
+                values[i] = float(values[i]) * pow(10, -7)
+
+        # Cria um array de booleanos do mesmo tamanho de 'inc.' e ajusta a tolerancia para poços verticais com inc. < 0.5
+        inc_is_zero = np.isclose(inc, 0, atol=0.05)
+
+        # Criação dos dicionários contendo os erros, cuja as funções ponderadas necessitam um tratamento diferente
+        singular_keys = ["xym3", "xym4", "xymr3", "xymr4", "mxy3", "mxy4", "xym3e", "xym4e", "XYM3E", "XYM4E", "abxy_ti2", "abixy_ti2",
+                         "ABXY-TI2S"]
+
+        # mwd_gyro_keys = ["xym1", "xym2", "xym3", "xym4", "sage", "sag", "vsag", "drf_r", "drf_s", "dsf_w", "dst_g", "xym3e", "xym4e"]
+
+        courselength_keys = ["xcly", "xclx", "xclh", "xcla", "XCLH", "XCLA"]
+
+        # courselength_keys = ["xcly", "xclx", "xclh", "xcla", "XCLH", "XCLL"]
+        # Inicializar um dicionário vazio para guardar os resultados e valores
+        result_values = {}
+
+        for i in range(len(inc)):
+            # Calculo do azimute verdadeiro utilizado para o modelo de erro das ferramentas giroscópicas
+            self.true_azimuth[i] = (np.degrees(azi[i]) + self.grid_correction) % 360
+            self.true_azimuth[i] = np.radians(self.true_azimuth[i])
+
+        # For que intera sobre todas as estações de survey
+        for i in range(len(inc)):
+
+            # 3. verifica se a inclinação é zero e define daz como zero
+            if inc_is_zero[i]:
+                daz[i] = 0
+
+            # Calculo do azimute magnético utilizado para o modelo de erro das ferramentas Magnéticas
+            self.magnetic_azimuth[i] = azi[i] - self.magnetic_declination % 360
+
+            # Seguindo as regras da página 31 do documento "definition-of-iscwsa-error-model-v5-11"
+            # Verifica se dmd é igual a zero
+            if dmd[i] == 0:
+                M[i] = 1
+            else:
+                M[i] = np.maximum(1, np.sqrt(np.abs(Lmin / dmd[i])))
+
+            # Inicialização e atualização do dicionário com as variaveis utilizadas no cálculo do modelo de erro do arquivo.txt
+            var_dict = {
+                'latitude': self.lat,
+                'longitude': -42.229893056,  # self.long,
+                'rkb': self.rkb,
+                'depthMSL': self.depthMSL,
+                'gtot': self.gtot,
+                'mtot': self.mtot,
+                'dip': self.dipangle,
+                'erot': self.erot,
+                'sig': self.significancia,
+                'tort': tort,
+                'inc': inc[i],
+                'azi': azi[i],
+                'azt': self.true_azimuth[i],
+                'azm': self.magnetic_azimuth[i],
+                'tmd': md[i],
+                'tvd': tvd[i],
+                'w_12': w_12[i],
+                'w_34': w_34[i],
+                'dmd': dmd[i],
+                'smd': smd[i],
+                'din': din[i],
+                'daz': daz[i],
+                'M': M[i]
+            }
+
+            # Erros que influneciam a profundidade do survey
+            letras_pos0 = []
+
+            # If que separa os erros para as sondas flutuantes e fixas, já que o valor da magnitude dos erros se alteram
+            if self.sonda == "flutuante":
+                # Erros que influneciam a profundidade do survey para sondas flutuantes
+                letras_pos0 = ['d', 's', 'f']
+
+            elif self.sonda == "fixa":
+                # Erros que influneciam a profundidade do survey para sondas fixas
+                letras_pos0 = ['d', 'e', 'f']
+
+            # Erros que influneciam a inclinação do survey
+            letras_pos1 = ['i', 'j']
+            # Erros que influneciam o azimute do survey
+            letras_pos2 = ['a', 'b', 'l']
+            # Erros que influneciam o azimute do survey apenas para RIP teste
+            letras_pos3 = ['a']
+
+            # For que itera sobre os erros de cada modelo de erro
+            for linha, key in enumerate(errors):
+
+                # Transforma o valor das magnitudes do arquivo.txt em um número flutuante
+                values_linha = float(values[linha])
+
+                # Salva o valor do tipo da propagação do erro (tie_on) em uma variavel auxiliar, para passar para outros métodos
+                tie_on_value = tie_on[linha]
+
+                # If que trata os dados para estações cuja inclinação = 0 (poços verticais)
+                if inc[i] == 0 and key in singular_keys:
+                    # if inc[i] < 0.018 and key in singular_keys:
+
+                    # Verifique se a chave já foi processada nessa profundidade
+                    if key in profundidades_processadas and md[i] in profundidades_processadas[key]:
+                        # Se já foi processada, não faça novamente
+                        continue
+
+                        # Se não foi processada, faça os cálculos e marque a profundidade como processada
+                    if key not in profundidades_processadas:
+                        profundidades_processadas[key] = set()
+
+                    profundidades_processadas[key].add(md[i])
+
+                    dic_erro[key] = self.singular_funcions(dic_erro, md, var_dict, key, i, linha, tie_on_value,
+                                                           values_linha, position_uncertainty_error,
+                                                           position_uncertainty_error_interest, result_values)
+
+                else:
+
+                    # If que atualiza os valores de w12 de acordo com a fórmula atualizada no arquivo .txt do modelo de erro
+                    if errors[linha] == "w_12":
+
+                        w_12[i] = self.evaluate_formula(formulas[linha], var_dict)
+                        var_dict['w_12'] = np.copy(w_12[i])
+
+                    # If que atualiza os valores de w34 de acordo com a fórmula atualizada no arquivo .txt do modelo de erro
+                    elif errors[linha] == "w_34":
+
+                        # If para poços verticais — pois pode existir uma divisão por 0, caso dmd = 0
+                        if var_dict['dmd'] == 0:
+
+                            # Se dmd for 0, defina w_34 como o cosseno de inc
+                            w_34[i] = np.cos(var_dict['inc'])
+
+                        else:
+
+                            # Se dmd não for 0, continue com o cálculo normal
+                            w_34[i] = self.evaluate_formula(formulas[linha], var_dict)
+
+                        var_dict['w_34'] = np.copy(w_34[i])
+
+                    # If que atualiza os valores da tortuosidade de acordo com a fórmula atualizada no arquivo .txt do modelo de erro
+                    elif errors[linha] == "tort":
+
+                        tort = self.evaluate_formula(formulas[linha], var_dict)
+                        var_dict['tort'] = np.copy(tort) * values_linha
+
+                    # If para cálculo das funções ponderadas do arquivo .txt do modelo de erro de cada ferramenta
+                    if errors[linha] not in ['w_12', 'w_34'] and vectors[linha] != 'n':
+
+                        # Necessário identificar se a influência do erro é em MD, Inclinação ou azimute, para montar a lista com as funções dos erros (dpde)
+                        # Transforma as ‘strings’ em letras minusculas, para garantir que seja feita a correta separação
+                        vector_linha = vectors[linha].lower()
+
+                        # If que separa a posição correta para alocação do resultado de cada linha do arquivo .txt do modelo de erro
+                        if vector_linha in letras_pos0 or key == "dstg":
+                            position = 0
+                        elif vector_linha in letras_pos1:
+                            position = 1
+                        elif vector_linha in letras_pos2:
+                            position = 2
+
+                        # If que trata as funções para erros relacionado a distancia entre surveys, já que o tie_on é diferente (x,y)
+                        elif vector_linha == "x":
+
+                            drdp_courseLength_x[i] = self.CourseLength_funcions(i, md, var_dict, key, drdp_courseLength)
+                            position = 3
+
+                        elif vector_linha == "y":
+
+                            drdp_courseLength_y[i] = self.CourseLength_funcions(i, md, var_dict, key, drdp_courseLength)
+                            position = 3
+
+                        # If que ignora as linhas cuja as funções não possuem vector definido para erros em MD, inc e azimute.
+                        # Como as variaveis auxiliares (w12, w34, tort)
+                        else:
+                            position = -1
+
+                        if position != -1:
+
+                            # Chama a função evaluate_formula, para calcular cada equação das funções ponderadas do modelo de erro do.txt
+                            resultado = self.evaluate_formula(formulas[linha], var_dict)
+
+                            # Adicione o resultado, o valor e o tie_on no dicionário temporário
+                            if key not in result_values:
+                                result_values[key] = [(resultado, values_linha, position, tie_on_value)]
+                            else:
+                                result_values[key].append((resultado, values_linha, position, tie_on_value))
+
+            # Após o ‘loop’ ter sido completado, executa as operações
+            for key in result_values:
+
+                # if key not in singular_keys or (key in singular_keys and inc[i] >= 0.018):
+                if key not in singular_keys or (key in singular_keys and inc[i] != 0):
+
+                    # Cria um vetor de função ponderada se a chave não existir
+                    if key not in dic_erro:
+                        dic_erro[key] = []
+
+                    weighting_functions[i] = np.zeros((3, 1))
+
+                    # Para cada resultado, valor e posição, atualize o vetor de função de ponderação
+                    for resultado, values_linha, position, tie_on_value in result_values[key]:
+
+                        if -1 < position < 3:
+                            weighting_functions[i][position] = resultado * values_linha  # Atualiza a posição correta
+
+                    weighting_functions[i] = np.array(np.copy(weighting_functions[i])).reshape(-1, 1)
+
+                    if tie_on[linha] in ['r', 's']:
+
+                        if position == 1:
+
+                            total_weighting_functions[i][0] = total_weighting_functions[i][0] + resultado
+
+                        elif vector_linha == 'a':
+
+                            total_weighting_functions[i][1] = total_weighting_functions[i][1] + resultado * values_linha #weighting_functions[i][position] #resultado
+
+                    position_uncertainty_error[i] = np.zeros((3, 1))
+                    position_uncertainty_error_interest[i] = np.zeros((3, 1))
+
+                    if key in courselength_keys:
+
+                        CourseLength_result = resultado * values_linha
+
+                        if key in ["xcly", "xclh", "XCLH"]:
+
+                            position_uncertainty_error[i] = (md[i] - md[i - 1]) * CourseLength_result * \
+                                                            drdp_courseLength_x[i]
+
+                        elif key in ["xclx", "xcla", "XCLL", "XCLA"]:
+
+                            position_uncertainty_error[i] = (md[i] - md[i - 1]) * CourseLength_result * \
+                                                            drdp_courseLength_y[i]
+
+                        dic_erro[key].append(
+                            [tie_on_value, np.copy(CourseLength_result), np.copy(position_uncertainty_error[i]),
+                             np.copy(position_uncertainty_error[i])])
+
+                    else:
+
+                        position_uncertainty_error[i] = np.dot(drdp[i], weighting_functions[i])
+
+                        position_uncertainty_error_interest[i] = np.dot(drdp_interest[i], weighting_functions[i])
+
+                        dic_erro[key].append(
+                            [tie_on_value, np.copy(weighting_functions[i]), np.copy(position_uncertainty_error[i]),
+                             np.copy(position_uncertainty_error_interest[i])])
+
+        elapsed_time = timeit.default_timer() - start_time
+
+        print(f"Tempo de execução de weighting_functions_calculator: {elapsed_time} segundos")
+
+        start_time = timeit.default_timer()
+
+        # Obtenha o caminho para a área de trabalho do usuário atual
+        desktop = os.path.join(os.path.expanduser("~"), 'Desktop')
+
+        # Crie o caminho completo para o arquivo Excel
+        file_path_1 = os.path.join(desktop, 'resultados_funcoes_peso.xlsx')
+
+        # Crie o caminho completo para o arquivo Excel
+        file_path_2 = os.path.join(desktop, 'position_uncertainty_error.xlsx')
+
+        df_results = pd.DataFrame()
+
+        # Inicialize o valor máximo de comprimento com o comprimento de md
+        max_len_global = len(md)
+
+        for key in result_values.keys():
+
+            # Extraia as listas de resultado, values_linha, position, e tie_on_value
+            resultado = [x[0] for x in result_values[key]]
+            values_linha = [x[1] for x in result_values[key]]
+            position = [x[2] for x in result_values[key]]
+            tie_on_value = [x[3] for x in result_values[key]]
+
+            # Descubra o número máximo de elementos em qualquer lista no dicionário result_values
+            max_len = max(max(len(x) for x in val) for val in result_values.values())
+
+            # Atualize max_len_global, se necessário
+            if max_len > max_len_global:
+                max_len_global = max_len
+
+            # Certifique-se de que todas as listas têm o mesmo comprimento
+            if len(resultado) < max_len:
+                resultado += [np.nan] * (max_len - len(resultado))
+            if len(values_linha) < max_len:
+                values_linha += [np.nan] * (max_len - len(values_linha))
+            if len(position) < max_len:
+                position += [np.nan] * (max_len - len(position))
+            if len(tie_on_value) < max_len:
+                tie_on_value += [np.nan] * (max_len - len(tie_on_value))
+
+            # Crie um DataFrame temporário com essas listas como colunas
+            temp_df = pd.DataFrame({
+                key + "_resultado": resultado,
+                key + "_values_linha": values_linha,
+                key + "_position": position,
+                key + "_tie_on_value": tie_on_value
+            })
+
+            # Concatene este DataFrame temporário ao DataFrame principal
+            df_results = pd.concat([df_results, temp_df], axis=1)
+
+        if len(md) < max_len_global:
+            md += [np.nan] * (max_len_global - len(md))
+
+        # Crie um DataFrame para "MD"
+        md_df = pd.DataFrame(md, columns=["MD"])
+
+        # Concatene "md_df" e "df_results"
+        df_results = pd.concat([md_df, df_results.reset_index(drop=True)], axis=1)
+
+        # Salve o DataFrame no arquivo Excel
+        df_results.to_excel(file_path_1, index=False)
+
+        # Inicializa um DataFrame vazio
+        df_all_position_uncertainty = pd.DataFrame()
+
+        for key in dic_erro.keys():
+            # Extraia as listas de tie_on_value, self.weighting_functions e position_uncertainty_error
+            tie_on_value = [x[0] for x in dic_erro[key]]
+            weighting_functions = [x[1] for x in dic_erro[key]]
+            position_uncertainty_error = [x[2] for x in dic_erro[key]]
+            position_uncertainty_error_interest = [x[3] for x in dic_erro[key]]
+
+            max_len_position = max(len(v) for v in dic_erro.values())
+
+            # Certifique-se de que todas as listas têm o mesmo comprimento
+            tie_on_value = tie_on_value + ([np.nan] * (max_len_position - len(tie_on_value))) if len(
+                tie_on_value) < max_len_position else tie_on_value
+            weighting_functions = weighting_functions + (
+                    [np.nan] * (max_len_position - len(weighting_functions))) if len(
+                weighting_functions) < max_len_position else weighting_functions
+            position_uncertainty_error = position_uncertainty_error + (
+                    [np.nan] * (max_len_position - len(position_uncertainty_error))) if len(
+                position_uncertainty_error) < max_len_position else position_uncertainty_error
+            position_uncertainty_error_interest = position_uncertainty_error_interest + (
+                    [np.nan] * (max_len_position - len(position_uncertainty_error_interest))) if len(
+                position_uncertainty_error_interest) < max_len_position else position_uncertainty_error_interest
+
+            # Crie um DataFrame temporário com essas listas como colunas
+            temp_df = pd.DataFrame({
+                key + "_tie_on_value": tie_on_value,
+                key + "_weighting_functions": weighting_functions,
+                key + "_position_uncertainty_error": position_uncertainty_error,
+                key + "_position_uncertainty_error_interest": position_uncertainty_error_interest
+            })
+
+            # Concatene este DataFrame temporário ao DataFrame principal
+            df_all_position_uncertainty = pd.concat([df_all_position_uncertainty, temp_df], axis=1)
+
+        # Concatene este DataFrame temporário ao DataFrame principal
+        df_all_position_uncertainty = pd.concat([md_df, df_all_position_uncertainty], axis=1)
+
+        df_all_position_uncertainty.reset_index(drop=True, inplace=True)
+
+        # Salve o DataFrame no arquivo Excel
+        df_all_position_uncertainty.to_excel(file_path_2, index=False)
+
+        elapsed_time = timeit.default_timer() - start_time
+
+        print(f"Tempo de execução de salvar nas tabelas: {elapsed_time} segundos")
+
+        return dic_erro, total_weighting_functions
+
+    def Model_error_calculator(self, md, dic_erro):
+
+        start_time = timeit.default_timer()
+
+        cov_matrices = {key: [] for key in dic_erro.keys()}
+        cov_matrices_interest = {key: [] for key in dic_erro.keys()}
+
+        sum_position_uncertainty_error = np.zeros((len(md), 3, 1))
+        sistematic_position_interest = np.zeros((len(md), 3, 1))
+
+        global_position_uncertainty_error = np.zeros((len(md), 3, 1))
+        global_position_interest = np.zeros((len(md), 3, 1))
+
+        # Inicializa uma matriz para armazenar as matrizes de covariância acumuladas para cada estação
+        total_cov_matrix = np.zeros((len(md), 3, 3))
+
+        cov_matrix = np.zeros((len(md), 3, 3))
+        cov_matrix_interest = np.zeros((len(md), 3, 3))
+
+        # Itera sobre cada chave (tipo de erro) em dic_erro
+        for key in dic_erro.keys():
+
+            # Itera sobre cada erro na lista de erros
+            for estacao, error in enumerate(dic_erro[key]):
+
+                # Separa o tie_on e os valores de erro
+                tie_on, position_uncertainty_error, position_uncertainty_error_interest = error[0], np.array(
+                    error[2]).reshape(-1, 1), np.array(error[3]).reshape(-1, 1)
+
+                # Adiciona a covariância correspondente com base no tipo de erro
+                if tie_on == 's':
+
+                    if estacao == 0:
+                        sum_position_uncertainty_error[estacao] = position_uncertainty_error_interest
+
+                    else:
+
+                        sum_position_uncertainty_error[estacao] = sum_position_uncertainty_error[
+                                                                      estacao - 1] + position_uncertainty_error
+
+                        sistematic_position_interest[estacao] = sum_position_uncertainty_error[
+                                                                    estacao - 1] + position_uncertainty_error_interest
+
+                    # Calcula a matriz de covariância para o erro atual
+                    cov_matrix[estacao] = np.outer(sistematic_position_interest[estacao],
+                                                   sistematic_position_interest[estacao])
+
+                    cov_matrix_interest[estacao] = np.outer(sistematic_position_interest[estacao],
+                                                            sistematic_position_interest[estacao])
+
+                    cov_matrices[key].append(cov_matrix[estacao])
+                    cov_matrices_interest[key].append(cov_matrix_interest[estacao])
+
+                # Adiciona a covariância correspondente com base no tipo de erro
+                if tie_on == 'g':
+
+                    if estacao == 0:
+                        global_position_uncertainty_error[estacao] = position_uncertainty_error_interest
+                    else:
+
+                        global_position_uncertainty_error[estacao] = global_position_uncertainty_error[
+                                                                         estacao - 1] + position_uncertainty_error
+
+                        global_position_interest[estacao] = global_position_uncertainty_error[
+                                                                estacao - 1] + position_uncertainty_error_interest
+
+                    # Calcula a matriz de covariância para o erro atual
+                    cov_matrix[estacao] = np.outer(global_position_interest[estacao], global_position_interest[estacao])
+
+                    cov_matrix_interest[estacao] = np.outer(global_position_interest[estacao],
+                                                            global_position_interest[estacao])
+
+                    cov_matrices[key].append(cov_matrix[estacao])
+                    cov_matrices_interest[key].append(cov_matrix_interest[estacao])
+
+                # Adiciona a covariância correspondente com base no tipo de erro
+                if tie_on == 'r':
+
+                    # Calcula a matriz de covariância para o erro atual
+                    cov_matrix[estacao] = np.outer(position_uncertainty_error, position_uncertainty_error)
+                    cov_matrix_interest[estacao] = np.outer(position_uncertainty_error_interest,
+                                                            position_uncertainty_error_interest)
+
+                    if estacao == 0:
+                        cov_matrices[key].append(cov_matrix[estacao])
+                        cov_matrices_interest[key].append(cov_matrix_interest[estacao])
+
+                    elif estacao > 0:
+                        cov_matrices[key].append(cov_matrices[key][estacao - 1] + cov_matrix[estacao])
+                        cov_matrices_interest[key].append(cov_matrices[key][estacao - 1] + cov_matrix_interest[estacao])
+
+                total_cov_matrix[estacao] = total_cov_matrix[estacao] + cov_matrices_interest[key][estacao]
+
+            cov_matrix = np.zeros((len(md), 3, 3))
+            cov_matrix_interest = np.zeros((len(md), 3, 3))
+
+        elapsed_time = timeit.default_timer() - start_time
+
+        print(f"Tempo de execução de Model_error_calculator: {elapsed_time} segundos")
+
+        # Inicialize uma lista para armazenar os dados
+        df_list = []
+        df_list_interest = []
+
+        # Percorra cada elemento na lista de profundidades
+        for i in range(len(md)):
+            # Inicialize um dicionário para armazenar os dados desta profundidade
+            data_dict = {"MD": md[i]}
+            data_dict_interest = {"MD": md[i]}
+            # Para cada chave em dic_erro
+            for error_key in dic_erro.keys():
+                # Crie um dataframe a partir da matriz de covariância 3x3
+                df_cov = pd.DataFrame(cov_matrices[error_key][i])
+                df_cov_interest = pd.DataFrame(cov_matrices_interest[error_key][i])
+                # Adicione os dados ao dicionário
+                for j in range(3):
+                    for k in range(3):
+                        data_dict[f'{error_key}_{j + 1}{k + 1}'] = df_cov.iloc[j, k]
+                        data_dict_interest[f'{error_key}_{j + 1}{k + 1}'] = df_cov_interest.iloc[j, k]
+
+            # Adicione o dicionário como uma linha de um dataframe e adicione-o à lista
+            df_list.append(pd.DataFrame(data_dict, index=[0]))
+            df_list_interest.append(pd.DataFrame(data_dict_interest, index=[0]))
+
+        # Concatene todos os dataframes individuais
+        df_cov_erro = pd.concat(df_list, ignore_index=True)
+        df_cov_erro_interest = pd.concat(df_list_interest, ignore_index=True)
+
+        # Criando DataFrame a partir de self.drdp
+        df_total_cov_matrix = pd.DataFrame([item for sublist in total_cov_matrix for item in sublist])
+
+        # Definindo os nomes das colunas
+        df_total_cov_matrix.columns = ['Norte', 'East', 'Vertical']
+
+        # Obtenha o caminho para a área de trabalho do usuário atual
+        desktop = os.path.join(os.path.expanduser("~"), 'Desktop')
+
+        # Crie o caminho completo para o arquivo Excel
+        file_path_cov_erro = os.path.join(desktop, 'ERROR_COV.xlsx')
+
+        # Crie o caminho completo para o arquivo Excel
+        file_path_total_cov_matrix = os.path.join(desktop, 'NEV_COV.xlsx')
+
+        # Salvando DataFrame para um arquivo Excel
+        df_total_cov_matrix.to_excel(file_path_total_cov_matrix, index=False)
+
+        # Cria um escritor do Excel usando a biblioteca pandas.ExcelWriter
+        with pd.ExcelWriter(file_path_cov_erro) as writer:
+            # Escreve os DataFrames para as respectivas planilhas
+            df_cov_erro.to_excel(writer, sheet_name='cov_matrices', index=False)
+            df_cov_erro_interest.to_excel(writer, sheet_name='cov_matrices_interest', index=False)
+
+        return total_cov_matrix
+
+    def hla_transformation(self, inc, azm, md, total_cov_matrix):
+
+        start_time = timeit.default_timer()
+
+        nev_to_hla = np.zeros((len(md), 3, 3))
+
+        total_cov_HLA = np.zeros((len(md), 3, 3))
+
+        autoval = []
+        autovec = []
+
+        submatrix_2x2 = np.zeros((len(md), 2, 2))
+        determinante_submatrix_2x2 = []
+
+        diagonal_principal = []
+        raiz_quadrada_diagonal_principal = []
+
+        for i in range(len(md)):
+            nev_to_hla[i][0][0] = mt.cos(inc[i]) * mt.cos(azm[i])
+            nev_to_hla[i][1][0] = mt.cos(inc[i]) * mt.sin(azm[i])
+            nev_to_hla[i][2][0] = - mt.sin(inc[i])
+
+            nev_to_hla[i][0][1] = - mt.sin(azm[i])
+            nev_to_hla[i][1][1] = mt.cos(azm[i])
+            nev_to_hla[i][2][1] = 0
+
+            nev_to_hla[i][0][2] = mt.sin(inc[i]) * mt.cos(azm[i])
+            nev_to_hla[i][1][2] = mt.sin(inc[i]) * mt.sin(azm[i])
+            nev_to_hla[i][2][2] = mt.cos(inc[i])
+
+            total_cov_HLA[i] = np.matmul(np.matmul(nev_to_hla[i].transpose(), total_cov_matrix[i]), nev_to_hla[i])
+
+            autovalor, autovector = np.linalg.eig(total_cov_HLA[i])
+
+            # Separa a submatriz que contem os dados para a elipse HS - Lateral
+            submatrix_2x2[i] = total_cov_HLA[i][:2, :2]
+
+            # Calcular o determinante
+            determinante_submatrix_2x2 = np.linalg.det(submatrix_2x2[i])
+
+            # Dividir cada termo pelo determinante
+            covariance_matrix_normalized = submatrix_2x2[i] / determinante_submatrix_2x2
+
+            autoval.append(covariance_matrix_normalized)
+            # autovec.append(autovector)
+
+        # Criando DataFrame a partir de self.drdp
+        df_nev_to_hla = pd.DataFrame([item for sublist in nev_to_hla for item in sublist])
+
+        # Definindo os nomes das colunas
+        df_nev_to_hla.columns = ['High Side', 'Lateral', 'Along Hole']
+
+        # Criando DataFrame a partir de self.drdp
+        df_total_cov_HLA = pd.DataFrame([item for sublist in total_cov_HLA for item in sublist])
+
+        # Definindo os nomes das colunas
+        df_total_cov_HLA.columns = ['High Side', 'Lateral', 'Along Hole']
+
+        # Obtenha o caminho para a área de trabalho do usuário atual
+        desktop = os.path.join(os.path.expanduser("~"), 'Desktop')
+
+        # Crie o caminho completo para o arquivo Excel
+        file_path_total_cov_HLA = os.path.join(desktop, 'HLA_COV.xlsx')
+
+        # Salvando DataFrame para um arquivo Excel
+        df_total_cov_HLA.to_excel(file_path_total_cov_HLA, index=False)
+
+        # Cria um escritor do Excel usando a biblioteca pandas.ExcelWriter
+        with pd.ExcelWriter(file_path_total_cov_HLA) as writer:
+            # Escreve os DataFrames para as respectivas planilhas
+            df_nev_to_hla.to_excel(writer, sheet_name='NEV_to_HLA', index=False)
+            df_total_cov_HLA.to_excel(writer, sheet_name='HLA_COV', index=False)
+
+        elapsed_time = timeit.default_timer() - start_time
+
+        print(f"Tempo de execução de hla_transformation: {elapsed_time} segundos")
+
+        return total_cov_HLA, autoval, autovec
+
+    def run_ModeloErro(self):
+
+        super().run_MinimumCurvature()
+
+        self.initialize_variables()
+
+        # Identificar a menor profundidade final
+        if self.numero_comparacao < 3:
+            md_final_min = min(self.MDM[-1], self.MDG[-1])
+
+        if self.numero_comparacao >= 3:
+            md_final_min = min(self.MDM[-1], self.MDG[-1], self.MDOMM[-1])
+
+        self.drdp_GWD, self.drdp_interest_GWD = self.Effect_Survey_Errors(self.MDG, self.incG, self.azG)
+
+        self.dic_erro_GWD, self.weighting_functions_GWD = self.weighting_functions_calculator(self.incG, self.azG,
+                                                                                              self.MDG,
+                                                                                              self.VpositionG,
+                                                                                              self.tie_on_G,
+                                                                                              self.valueG,
+                                                                                              self.errorG,
+                                                                                              self.formulaG,
+                                                                                              self.vectorG,
+                                                                                              self.unitG,
+                                                                                              self.drdp_GWD,
+                                                                                              self.drdp_interest_GWD)
+
+        self.total_cov_matrix_GWD = self.Model_error_calculator(self.MDG, self.dic_erro_GWD)
+
+        self.total_cov_HLA_GWD, self.autoval_GWD, self.autovec_GWD = self.hla_transformation(self.incG, self.azG,
+                                                                                             self.MDG,
+                                                                                             self.total_cov_matrix_GWD)
+
+        self.drdp_MWD, self.drdp_interest_MWD = self.Effect_Survey_Errors(self.MDM, self.incM, self.azM)
+
+        self.dic_erro_MWD, self.weighting_functions_MWD = self.weighting_functions_calculator(self.incM, self.azM,
+                                                                                              self.MDM,
+                                                                                              self.VpositionM,
+                                                                                              self.tie_on_M,
+                                                                                              self.valueM,
+                                                                                              self.errorM,
+                                                                                              self.formulaM,
+                                                                                              self.vectorM,
+                                                                                              self.unitM,
+                                                                                              self.drdp_MWD,
+                                                                                              self.drdp_interest_MWD)
+
+        self.total_cov_matrix_MWD = self.Model_error_calculator(self.MDM, self.dic_erro_MWD)
+
+        self.total_cov_HLA_MWD, self.autoval_MWD, self.autovec_MWD = self.hla_transformation(self.incM, self.azM,
+                                                                                             self.MDM,
+                                                                                             self.total_cov_matrix_MWD)
+
+        # MWD interpolado
+
+        self.drdp_DSM, self.drdp_interest_DSM = self.Effect_Survey_Errors(self.mdDSM, self.incDSM, self.azDSM)
+
+        self.dic_erro_DSM, self.weighting_functions_DSM = self.weighting_functions_calculator(self.incDSM,
+                                                                                              self.azDSM,
+                                                                                              self.mdDSM,
+                                                                                              self.VpositionDSM,
+                                                                                              self.tie_on_DSM,
+                                                                                              self.valueDSM,
+                                                                                              self.errorDSM,
+                                                                                              self.formulaDSM,
+                                                                                              self.vectorDSM,
+                                                                                              self.unitDSM,
+                                                                                              self.drdp_DSM,
+                                                                                              self.drdp_interest_DSM)
+
+        self.total_cov_matrix_DSM = self.Model_error_calculator(self.mdDSM, self.dic_erro_DSM)
+
+        self.total_cov_HLA_DSM, self.autoval_DSM, self.autovec_DSM = self.hla_transformation(self.incDSM,
+                                                                                             self.azDSM,
+                                                                                             self.mdDSM,
+                                                                                             self.total_cov_matrix_DSM)
+
+
+
+        # Calculo da terceira trajetória (usualmente OMM)
+        if range(self.numero_comparacao) == 2:
+            self.drdp_OMM, self.drdp_interest_OMM = self.Effect_Survey_Errors(self.MDOMM, self.incOMM, self.azOMM)
+
+            self.dic_erro_OMM, self.weighting_functions_OMM = self.weighting_functions_calculator(self.incOMM,
+                                                                                                  self.azOMM,
+                                                                                                  self.MDOMM,
+                                                                                                  self.VpositionOMM,
+                                                                                                  self.tie_on_OMM,
+                                                                                                  self.valueOMM,
+                                                                                                  self.errorOMM,
+                                                                                                  self.formulaOMM,
+                                                                                                  self.vectorOMM,
+                                                                                                  self.unitOMM,
+                                                                                                  self.drdp_OMM,
+                                                                                                  self.drdp_interest_OMM)
+
+            self.total_cov_matrix_OMM = self.Model_error_calculator(self.MDOMM, self.dic_erro_OMM)
+
+            self.total_cov_HLA_OMM, self.autoval_OMM, self.autovec_OMM = self.hla_transformation(self.incG, self.azG,
+                                                                                                 self.MDG,
+                                                                                                 total_cov_matrix_OMM)
+
+
+class Testes_Metodologia_Survey_Definitivo(ModeloErro):
+
+    def __init__(self):
+        super().__init__()
+
+        self.delta_inc = np.zeros(len(self.incDSM))
+        self.erro_esperado_inc = np.zeros(len(self.incDSM))
+        self.media_inc = np.zeros(len(self.incDSM))
+        self.desvio_padrao_inc = np.zeros(len(self.incDSM))
+        self.delta_azi = np.zeros(len(self.incDSM))
+        self.erro_esperado_azi = np.zeros(len(self.incDSM))
+        self.media_azi = np.zeros(len(self.incDSM))
+        self.desvio_padrao_azi = np.zeros(len(self.incDSM))
+        self.diferenca_normalizada_inc = np.zeros(len(self.incDSM))
+        self.diferenca_normalizada_azi = np.zeros(len(self.incDSM))
+
+    def RIP_calculos(self, incDSM, variavel_observada, variavel_DSM, weighting_functions_observada, weighting_functions_DSM,
+                     indice, tipo_teste):
+
+        Delta_variavel = np.zeros(len(variavel_DSM))
+        erro_esperado = np.zeros(len(variavel_DSM))
+        diferenca_normalizada = np.zeros(len(variavel_DSM))
+
+        for i in range(len(variavel_DSM) - 1):
+
+            if tipo_teste == "azimute" and incDSM[i] < mt.radians(3):
+
+                Delta_variavel[i] = mt.degrees(variavel_observada[i]) - mt.degrees(variavel_DSM[i]) % 360
+
+                if Delta_variavel[i] > 180:
+
+                    Delta_variavel[i] = Delta_variavel[i] - 360
+
+                elif Delta_variavel[i] < -180:
+
+                    Delta_variavel[i] = Delta_variavel[i] + 360
+
+            else:
+
+                Delta_variavel[i] = mt.degrees(variavel_observada[i]) - mt.degrees(variavel_DSM[i])
+
+            erro_esperado[i] = mt.sqrt(
+                mt.pow(weighting_functions_observada[i][indice], 2) + mt.pow(weighting_functions_DSM[i][indice], 2))
+
+            diferenca_normalizada[i] = Delta_variavel[i] / erro_esperado[i]
+
+        media_inc = np.mean(diferenca_normalizada)  # Calcula a média dos valores
+        desvio_padrao_inc = np.std(diferenca_normalizada)  # Calcula o desvio padrão dos valores
+
+        return Delta_variavel, erro_esperado, diferenca_normalizada, media_inc, desvio_padrao_inc
+
+    def relative_Instrument_Performance(self):
+
+        indice_inc = 0
+        indice_azi = 1
+
+        # Identificar a menor profundidade final
+        if self.numero_comparacao < 3:
+            md_final_min = min(self.MDM_plot[-1], self.MDG_plot[-1])
+
+        if self.numero_comparacao >= 3:
+            md_final_min = min(self.MDM_plot[-1], self.MDG_plot[-1], self.MDOMM_plot[-1])
+
+        if md_final_min == self.MDG_plot[-1]:
+
+            self.delta_inc, self.erro_esperado_inc, self.diferenca_normalizada_inc, self.media_inc, self.desvio_padrao_inc = self.RIP_calculos(
+                self.incDSM, self.incG, self.incDSM, self.weighting_functions_GWD, self.weighting_functions_DSM, indice_inc, tipo_teste="inclinacao")
+
+            self.delta_azi, self.erro_esperado_azi, self.diferenca_normalizada_azi, self.media_azi, self.desvio_padrao_azi = self.RIP_calculos(
+                self.incDSM, self.azG, self.azDSM, self.weighting_functions_GWD, self.weighting_functions_DSM, indice_azi, tipo_teste="azimute")
+
+        elif md_final_min == self.MDM_plot[-1]:
+
+            self.delta_inc, self.erro_esperado_inc, self.diferenca_normalizada_inc, self.media_inc, self.desvio_padrao_inc = self.RIP_calculos(
+                self.incDSM, self.incM, self.incDSM, self.weighting_functions_MWD, self.weighting_functions_DSM, indice_inc, tipo_teste="inclinacao")
+
+            self.delta_azi, self.erro_esperado_azi, self.diferenca_normalizada_azi, self.media_azi, self.desvio_padrao_azi = self.RIP_calculos(
+                self.incDSM, self.azM, self.azDSM, self.weighting_functions_MWD, self.weighting_functions_DSM, indice_azi, tipo_teste="azimute")
+
+        elif md_final_min == self.MDOMM_plot[-1]:
+
+            self.delta_inc, self.erro_esperado_inc, self.diferenca_normalizada_inc, self.media_inc, self.desvio_padrao_inc = self.RIP_calculos(
+                self.incDSM, self.incOMM, self.incDSM, self.weighting_functions_OMM, self.weighting_functions_DSM, indice_inc, tipo_teste="inclinacao")
+
+            self.delta_azi, self.erro_esperado_azi, self.diferenca_normalizada_azi, self.media_azi, self.desvio_padrao_azi = self.RIP_calculos(
+                self.incDSM, self.azOMM, self.azDSM, self.weighting_functions_OMM, self.weighting_functions_DSM, indice_azi, tipo_teste="azimute")
+
+        """
+        print(f'RIP media inclinação: {self.media_inc} /n')
+        print(f'RIP media Azimute: {self.media_azi} /n')
+        print(f'RIP desvio padrão inclinação: {self.desvio_padrao_inc} /n')
+        print(f'RIP desvio padrão Azimute: {self.desvio_padrao_azi} /n')
+        """
+
+        # Crie um DataFrame do panda com seus dados
+        data = {
+            'Profundidade Medida': self.mdDSM,
+            'Variação Inclinação': self.delta_inc,
+            'Erro esperado inclinação': self.erro_esperado_inc,
+            'Diferença normalizada inclinação': self.diferenca_normalizada_inc,
+            'RIP inclinação (média)': self.media_inc,
+            'RIP inclinação (desvio padrão)': self.desvio_padrao_inc,
+            'Variação azimute': self.delta_azi,
+            'Erro esperado azimute': self.erro_esperado_azi,
+            'Diferença normalizada azimute': self.diferenca_normalizada_azi,
+            'RIP azimute (média)': self.media_azi,
+            'RIP azimute (desvio padrão)': self.desvio_padrao_azi,
+        }
+
+        # Obtenha o caminho para a área de trabalho do usuário atual
+        desktop = os.path.join(os.path.expanduser("~"), 'Desktop')
+
+        df_RIP = pd.DataFrame(data)
+
+        # Transponha o DataFrame para que as colunas se tornem linhas
+        df_transposto = df_RIP.transpose()
+
+        # Especifique o nome do arquivo Excel de saída
+        file_path_RIP = os.path.join(desktop, 'RIP_Test.xlsx')
+
+        # Exporte os dados transpostos para um arquivo Excel
+        df_transposto.to_excel(file_path_RIP, header=False)
+
+    def chi_Square_calculo(self, mdobservado, variavel_observada, variavel_observada_HLA, Nposition, Eposition,
+                           Vposition, azi_observado, inc_observado, mdDSM, variavel_DSM, variavel_DSM_HLA):
+
+        numero_amostras = 15
+        indices_comparados_DSM = []
+        indices_comparados_observado = []
+
+        diagonal_principal_observada = []
+        diagonal_principal_DSM = []
+
+        primeiro_termo_observada = []
+        segundo_termo_observada = []
+        terceiro_termo_observada = []
+
+        primeiro_termo_DSM = []
+        segundo_termo_DSM = []
+        terceiro_termo_DSM = []
+
+        chi_square_N = 0
+        chi_square_E = 0
+        chi_square_V = 0
+
+        chi_square_N_list = []
+        chi_square_E_list = []
+        chi_square_V_list = []
+
+        # Inicialize as listas para armazenar os desvios padrão
+        desvioPadrao_observada_N = []
+        desvioPadrao_observada_E = []
+        desvioPadrao_observada_V = []
+
+        desvioPadrao_DSM_N = []
+        desvioPadrao_DSM_E = []
+        desvioPadrao_DSM_V = []
+
+        desvioPadrao_selecionado_observado_N = []
+        desvioPadrao_selecionado_observado_E = []
+        desvioPadrao_selecionado_observado_V = []
+
+        desvioPadrao_selecionado_DSM_N = []
+        desvioPadrao_selecionado_DSM_E = []
+        desvioPadrao_selecionado_DSM_V = []
+
+        DeltaN = []
+        DeltaE = []
+        DeltaV = []
+
+        mdDSM_ChiSquare = []
+        mdobservado_ChiSquare = []
+
+        desvioPadrao_DSM_N_ChiSquare = []
+        desvioPadrao_observada_N_ChiSquare = []
+        desvioPadrao_DSM_E_ChiSquare = []
+        desvioPadrao_observada_E_ChiSquare = []
+        desvioPadrao_DSM_V_ChiSquare = []
+        desvioPadrao_observada_V_ChiSquare = []
+
+        chi_square_H = 0
+        chi_square_L = 0
+        chi_square_A = 0
+
+        chi_square_H_list = []
+        chi_square_L_list = []
+        chi_square_A_list = []
+
+        DeltaH = []
+        DeltaL = []
+        DeltaA = []
+
+        desvioPadrao_observada_H = []
+        desvioPadrao_observada_L = []
+        desvioPadrao_observada_A = []
+
+        desvioPadrao_DSM_H = []
+        desvioPadrao_DSM_L = []
+        desvioPadrao_DSM_A = []
+
+        desvioPadrao_selecionado_observado_H = []
+        desvioPadrao_selecionado_observado_L = []
+        desvioPadrao_selecionado_observado_A = []
+
+        desvioPadrao_selecionado_DSM_H = []
+        desvioPadrao_selecionado_DSM_L = []
+        desvioPadrao_selecionado_DSM_A = []
+
+        azi_HLA_chi_square = []
+        inc_HLA_chi_square = []
+
+        desvioPadrao_DSM_H_ChiSquare = []
+        desvioPadrao_observada_H_ChiSquare = []
+        desvioPadrao_DSM_L_ChiSquare = []
+        desvioPadrao_observada_L_ChiSquare = []
+        desvioPadrao_DSM_A_ChiSquare = []
+        desvioPadrao_observada_A_ChiSquare = []
+
+        # Itere sobre as matrizes 3x3 em self.total_cov_matrix_GWD ou self.total_cov_matrix_MWD
+        for matriz in variavel_observada:
+
+            # Extraia a diagonal principal da matriz
+            diagonal_principal = np.diag(matriz)
+
+            # Calcule a raiz quadrada dos valores da diagonal principal
+            raiz_quadrada_diagonal = np.sqrt(diagonal_principal)
+
+            diagonal_principal_observada.append(diagonal_principal)
+
+            primeiro_termo_observada.append(diagonal_principal[0])
+            segundo_termo_observada.append(diagonal_principal[1])
+            terceiro_termo_observada.append(diagonal_principal[2])
+
+            # Adicione os valores às listas apropriadas
+            desvioPadrao_observada_N.append(raiz_quadrada_diagonal[0])
+            desvioPadrao_observada_E.append(raiz_quadrada_diagonal[1])
+            desvioPadrao_observada_V.append(raiz_quadrada_diagonal[2])
+
+        # Itere sobre as matrizes NEV 3x3 em self.total_cov_matrix_DSM
+        for matriz in variavel_DSM:
+            # Extraia a diagonal principal da matriz
+            diagonal_principal_NEV = np.diag(matriz)
+
+            # Calcule a raiz quadrada dos valores da diagonal principal
+            raiz_quadrada_diagonal_NEV = np.sqrt(diagonal_principal_NEV)
+
+            diagonal_principal_DSM.append(diagonal_principal_NEV)
+
+            primeiro_termo_DSM.append(diagonal_principal_NEV[0])
+            segundo_termo_DSM.append(diagonal_principal_NEV[1])
+            terceiro_termo_DSM.append(diagonal_principal_NEV[2])
+
+            # Adicione os valores às listas apropriadas
+            desvioPadrao_DSM_N.append(raiz_quadrada_diagonal_NEV[0])
+            desvioPadrao_DSM_E.append(raiz_quadrada_diagonal_NEV[1])
+            desvioPadrao_DSM_V.append(raiz_quadrada_diagonal_NEV[2])
+
+        # Itere sobre as matrizes HLA 3x3 em self.total_cov_matrix_DSM
+        for matriz in variavel_observada_HLA:
+            diagonal_principal_HLA = np.diag(matriz)
+            raiz_quadrada_diagonal_HLA = np.sqrt(diagonal_principal_HLA)
+
+            # Adicione os valores às listas apropriadas
+            desvioPadrao_DSM_H.append(raiz_quadrada_diagonal_HLA[0])
+            desvioPadrao_DSM_L.append(raiz_quadrada_diagonal_HLA[1])
+            desvioPadrao_DSM_A.append(raiz_quadrada_diagonal_HLA[2])
+
+        # Itere sobre as matrizes HLA 3x3 em self.total_cov_matrix_DSM
+        for matriz in variavel_DSM_HLA:
+            diagonal_principal_HLA = np.diag(matriz)
+            raiz_quadrada_diagonal_HLA = np.sqrt(diagonal_principal_HLA)
+
+            # Adicione os valores às listas apropriadas
+            desvioPadrao_observada_H.append(raiz_quadrada_diagonal_HLA[0])
+            desvioPadrao_observada_L.append(raiz_quadrada_diagonal_HLA[1])
+            desvioPadrao_observada_A.append(raiz_quadrada_diagonal_HLA[2])
+
+        intervalo_trecho_DSM = round(mdDSM[-1] / numero_amostras)
+        intervalo_trecho_M = round(mdobservado[-1] / numero_amostras)
+
+        mean_COV_observada = np.mean(primeiro_termo_observada) + np.mean(segundo_termo_observada) + np.mean(
+            terceiro_termo_observada)
+        mean_COV_DSM = np.mean(primeiro_termo_DSM) + np.mean(segundo_termo_DSM) + np.mean(terceiro_termo_DSM)
+
+        for i in range(numero_amostras):
+
+            profundidade_comparada_DSM = mdDSM[0] + (intervalo_trecho_DSM * (i + 1))
+            profundidade_comparada_observado = mdobservado[0] + (intervalo_trecho_M * (i + 1))
+
+            # Encontra os índices correspondentes nos arrays
+            indice_DSM = next(
+                (idx for idx, valor in enumerate(mdDSM) if abs(valor - profundidade_comparada_DSM) <= 100), None)
+
+            indice_observado = next(
+                (idx for idx, valor in enumerate(mdobservado) if abs(valor - profundidade_comparada_observado) <= 100),
+                None)
+
+            # Adicione os índices à lista
+            if indice_DSM is not None:
+                indices_comparados_DSM.append(indice_DSM)
+            if indice_observado is not None:
+                indices_comparados_observado.append(indice_observado)
+
+        # Cria listas contendo os valores correspondentes aos índices selecionados
+        variavel_selecionadas_DSM = [variavel_DSM[i] for i in indices_comparados_DSM]
+        variavel_selecionadas_observado = [variavel_observada[i] for i in indices_comparados_observado]
+
+        desvioPadrao_selecionado_observado_N = [desvioPadrao_observada_N[i] for i in indices_comparados_observado]
+        desvioPadrao_selecionado_observado_E = [desvioPadrao_observada_E[i] for i in indices_comparados_observado]
+        desvioPadrao_selecionado_observado_V = [desvioPadrao_observada_V[i] for i in indices_comparados_observado]
+
+        desvioPadrao_selecionado_DSM_N = [desvioPadrao_DSM_N[i] for i in indices_comparados_DSM]
+        desvioPadrao_selecionado_DSM_E = [desvioPadrao_DSM_E[i] for i in indices_comparados_DSM]
+        desvioPadrao_selecionado_DSM_V = [desvioPadrao_DSM_V[i] for i in indices_comparados_DSM]
+
+        desvioPadrao_selecionado_observado_H = [desvioPadrao_observada_H[i] for i in indices_comparados_observado]
+        desvioPadrao_selecionado_observado_L = [desvioPadrao_observada_L[i] for i in indices_comparados_observado]
+        desvioPadrao_selecionado_observado_A = [desvioPadrao_observada_A[i] for i in indices_comparados_observado]
+
+        desvioPadrao_selecionado_DSM_H = [desvioPadrao_DSM_H[i] for i in indices_comparados_DSM]
+        desvioPadrao_selecionado_DSM_L = [desvioPadrao_DSM_L[i] for i in indices_comparados_DSM]
+        desvioPadrao_selecionado_DSM_A = [desvioPadrao_DSM_A[i] for i in indices_comparados_DSM]
+
+        if mean_COV_observada <= mean_COV_DSM:
+
+            azi_HLA_chi_square = [azi_observado[i] for i in indices_comparados_observado]
+            inc_HLA_chi_square = [inc_observado[i] for i in indices_comparados_observado]
+
+        else:
+
+            azi_HLA_chi_square = [self.azDSM[i] for i in indices_comparados_DSM]
+            inc_HLA_chi_square = [self.incDSM[i] for i in indices_comparados_DSM]
+
+        for i in range(len(variavel_selecionadas_DSM)):
+            chi_square_N = chi_square_N + (((self.NpositionDSM[indices_comparados_DSM[i]] - Nposition[
+                indices_comparados_observado[i]]) ** 2) /
+                                           ((desvioPadrao_selecionado_DSM_N[i] ** 2) + (
+                                                       desvioPadrao_selecionado_observado_N[i] ** 2)))
+
+            chi_square_E = chi_square_E + (((self.EpositionDSM[indices_comparados_DSM[i]] - Eposition[
+                indices_comparados_observado[i]]) ** 2) /
+                                           ((desvioPadrao_selecionado_DSM_E[i] ** 2) + (
+                                                       desvioPadrao_selecionado_observado_E[i] ** 2)))
+
+            chi_square_V = chi_square_V + (((self.VpositionDSM[indices_comparados_DSM[i]] - Vposition[
+                indices_comparados_observado[i]]) ** 2) /
+                                           ((desvioPadrao_selecionado_DSM_V[i] ** 2) + (
+                                                       desvioPadrao_selecionado_observado_V[i] ** 2)))
+
+            mdDSM_ChiSquare.append(mdDSM[indices_comparados_DSM[i]])
+            mdobservado_ChiSquare.append(mdobservado[indices_comparados_observado[i]])
+            desvioPadrao_DSM_N_ChiSquare.append(desvioPadrao_DSM_N[indices_comparados_DSM[i]])
+            desvioPadrao_observada_N_ChiSquare.append(desvioPadrao_observada_N[indices_comparados_observado[i]])
+            desvioPadrao_DSM_E_ChiSquare.append(desvioPadrao_DSM_E[indices_comparados_DSM[i]])
+            desvioPadrao_observada_E_ChiSquare.append(desvioPadrao_observada_E[indices_comparados_observado[i]])
+            desvioPadrao_DSM_V_ChiSquare.append(desvioPadrao_DSM_V[indices_comparados_DSM[i]])
+            desvioPadrao_observada_V_ChiSquare.append(desvioPadrao_observada_V[indices_comparados_observado[i]])
+
+            DeltaN.append(
+                self.NpositionDSM[indices_comparados_observado[i]] - Nposition[indices_comparados_observado[i]])
+            DeltaE.append(
+                self.EpositionDSM[indices_comparados_observado[i]] - Eposition[indices_comparados_observado[i]])
+            DeltaV.append(
+                self.VpositionDSM[indices_comparados_observado[i]] - Vposition[indices_comparados_observado[i]])
+
+            chi_square_N_list.append(chi_square_N)
+            chi_square_E_list.append(chi_square_E)
+            chi_square_V_list.append(chi_square_V)
+
+        for i in range(len(variavel_selecionadas_DSM)):
+
+            DeltaH.append(
+                DeltaN[i] * np.cos(azi_HLA_chi_square[i]) * np.cos(inc_HLA_chi_square[i]) +
+                DeltaE[i] * np.sin(azi_HLA_chi_square[i]) * np.cos(inc_HLA_chi_square[i]) -
+                DeltaV[i] * np.sin(inc_HLA_chi_square[i]))
+
+            DeltaL.append(
+                -DeltaN[i] * np.sin(azi_HLA_chi_square[i]) +
+                DeltaE[i] * np.cos(azi_HLA_chi_square[i]))
+
+            DeltaA.append(
+                DeltaN[i] * np.cos(azi_HLA_chi_square[i]) * np.sin(inc_HLA_chi_square[i]) +
+                DeltaE[i] * np.sin(azi_HLA_chi_square[i]) * np.sin(inc_HLA_chi_square[i]) +
+                DeltaV[i] * np.cos(inc_HLA_chi_square[i]))
+
+        for i in range(len(variavel_selecionadas_DSM)):
+
+            chi_square_H = chi_square_H + (((DeltaH[i]) ** 2) /
+                                           ((desvioPadrao_selecionado_DSM_H[i] ** 2) + (
+                                                       desvioPadrao_selecionado_observado_H[i] ** 2)))
+
+            chi_square_L = chi_square_L + (((DeltaL[i]) ** 2) /
+                                           ((desvioPadrao_selecionado_DSM_L[i] ** 2) + (
+                                                       desvioPadrao_selecionado_observado_L[i] ** 2)))
+
+            chi_square_A = chi_square_A + (((DeltaA[i]) ** 2) /
+                                           ((desvioPadrao_selecionado_DSM_A[i] ** 2) + (
+                                                       desvioPadrao_selecionado_observado_A[i] ** 2)))
+
+            desvioPadrao_DSM_H_ChiSquare.append(desvioPadrao_DSM_H[indices_comparados_DSM[i]])
+            desvioPadrao_observada_H_ChiSquare.append(desvioPadrao_observada_H[indices_comparados_observado[i]])
+            desvioPadrao_DSM_L_ChiSquare.append(desvioPadrao_DSM_L[indices_comparados_DSM[i]])
+            desvioPadrao_observada_L_ChiSquare.append(desvioPadrao_observada_L[indices_comparados_observado[i]])
+            desvioPadrao_DSM_A_ChiSquare.append(desvioPadrao_DSM_A[indices_comparados_DSM[i]])
+            desvioPadrao_observada_A_ChiSquare.append(desvioPadrao_observada_A[indices_comparados_observado[i]])
+
+            chi_square_H_list.append(chi_square_H)
+            chi_square_L_list.append(chi_square_L)
+            chi_square_A_list.append(chi_square_A)
+
+        # Crie um DataFrame do Pandas com seus dados
+        data = {
+            'MD_DSM': mdDSM_ChiSquare,
+            'MD_Observado': mdobservado_ChiSquare,
+            'DeltaN': DeltaN,
+            'DeltaE': DeltaE,
+            'DeltaV': DeltaV,
+            'DesvioPadrao_DSM_N': desvioPadrao_DSM_N_ChiSquare,
+            'DesvioPadrao_Observado_N': desvioPadrao_observada_N_ChiSquare,
+            'DesvioPadrao_DSM_E': desvioPadrao_DSM_E_ChiSquare,
+            'DesvioPadrao_Observado_E': desvioPadrao_observada_E_ChiSquare,
+            'DesvioPadrao_DSM_V': desvioPadrao_DSM_V_ChiSquare,
+            'DesvioPadrao_Observado_V': desvioPadrao_observada_V_ChiSquare,
+            'Chi_Square_N': chi_square_N_list,
+            'Chi_Square_E': chi_square_E_list,
+            'Chi_Square_V': chi_square_V_list,
+            'DeltaH': DeltaH,
+            'DeltaL': DeltaL,
+            'DeltaA': DeltaA,
+            'DesvioPadrao_DSM_H': desvioPadrao_DSM_H_ChiSquare,
+            'DesvioPadrao_Observado_H': desvioPadrao_observada_H_ChiSquare,
+            'DesvioPadrao_DSM_L': desvioPadrao_DSM_L_ChiSquare,
+            'DesvioPadrao_Observado_L': desvioPadrao_observada_L_ChiSquare,
+            'DesvioPadrao_DSM_A': desvioPadrao_DSM_A_ChiSquare,
+            'DesvioPadrao_Observado_A': desvioPadrao_observada_A_ChiSquare,
+            'Chi_Square_H': chi_square_H_list,
+            'Chi_Square_L': chi_square_L_list,
+            'Chi_Square_A': chi_square_A_list
+        }
+
+        # Obtenha o caminho para a área de trabalho do usuário atual
+        desktop = os.path.join(os.path.expanduser("~"), 'Desktop')
+
+        df_chi_square = pd.DataFrame(data)
+
+        # Transponha o DataFrame para que as colunas se tornem linhas
+        df_transposto = df_chi_square.transpose()
+
+        # Especifique o nome do arquivo Excel de saída
+        file_path_chi_square = os.path.join(desktop, 'chi_square.xlsx')
+
+        # Exporte os dados transpostos para um arquivo Excel
+        df_transposto.to_excel(file_path_chi_square, header=False)
+
+        return chi_square_N_list, chi_square_E_list, chi_square_V_list, chi_square_H_list, chi_square_L_list, chi_square_A_list
+
+    def chi_Square(self):
+
+        # Identificar a menor profundidade final
+        if self.numero_comparacao < 3:
+            md_final_min = min(self.MDM_plot[-1], self.MDG_plot[-1])
+
+        if self.numero_comparacao >= 3:
+            md_final_min = min(self.MDM_plot[-1], self.MDG_plot[-1], self.MDOMM_plot[-1])
+
+        if md_final_min == self.MDG_plot[-1]:
+
+            chi_square_N, chi_square_E, chi_square_V, chi_square_H, chi_square_L, chi_square_A = self.chi_Square_calculo(
+                self.MDG, self.total_cov_matrix_GWD, self.total_cov_HLA_GWD, self.NpositionG, self.EpositionG,
+                self.VpositionG, self.azG, self.incG, self.mdDSM, self.total_cov_matrix_DSM, self.total_cov_HLA_DSM)
+
+        elif md_final_min == self.MDM_plot[-1]:
+
+            chi_square_N, chi_square_E, chi_square_V, chi_square_H, chi_square_L, chi_square_A = self.chi_Square_calculo(
+                self.MDM, self.total_cov_matrix_MWD, self.total_cov_HLA_MWD, self.NpositionM, self.EpositionM,
+                self.VpositionM, self.azM, self.incM, self.mdDSM, self.total_cov_matrix_DSM, self.total_cov_HLA_DSM)
+
+        elif md_final_min == self.MDOMM_plot[-1]:
+
+            chi_square_N, chi_square_E, chi_square_V, chi_square_H, chi_square_L, chi_square_A = self.chi_Square_calculo(
+                self.MDOMM, self.total_cov_matrix_OMM, self.total_cov_HLA_OMM, self.NpositionOMM, self.EpositionOMM,
+                self.VpositionOMM, self.azOMM, self.incOMM, self.mdDSM, self.total_cov_matrix_DSM,
+                self.total_cov_HLA_DSM)
+
+            chi_square_N, chi_square_E, chi_square_V, chi_square_H, chi_square_L, chi_square_A = self.chi_Square_calculo(
+                self.MDOMM, self.total_cov_matrix_OMM, self.total_cov_HLA_OMM, self.NpositionOMM, self.EpositionOMM,
+                self.VpositionOMM, self.mdDSM_2, self.total_cov_matrix_DSM_2, self.total_cov_HLA_DSM_2)
+
+        """
+        print(f'Chi-square N: {chi_square_N} /n')
+        print(f'Chi-square E: {chi_square_E} /n')
+        print(f'Chi-square V: {chi_square_V} /n')
+        print(f'Chi-square H: {chi_square_H} /n')
+        print(f'Chi-square L: {chi_square_L} /n')
+        print(f'Chi-square A: {chi_square_A} /n')
+        """
+
+    def t_Test(self):
+
+        # Identificar a menor profundidade final
+        if self.numero_comparacao < 3:
+            md_final_min = min(self.MDM_plot[-1], self.MDG_plot[-1])
+
+        if self.numero_comparacao >= 3:
+            md_final_min = min(self.MDM_plot[-1], self.MDG_plot[-1], self.MDOMM_plot[-1])
+
+        if md_final_min == self.MDG_plot[-1]:
+            resultInc = stats.ttest_ind(a=self.incDSM, b=self.incG, equal_var=True, nan_policy='omit')
+            resultAz = stats.ttest_ind(a=self.azDSM, b=self.azG, equal_var=True, nan_policy='omit')
+            resultN = stats.ttest_ind(a=self.NpositionDSM, b=self.NpositionG, equal_var=True, nan_policy='omit')
+            resultE = stats.ttest_ind(a=self.EpositionDSM, b=self.EpositionG, equal_var=True, nan_policy='omit')
+            resultV = stats.ttest_ind(a=self.VpositionDSM, b=self.VpositionG, equal_var=True, nan_policy='omit')
+
+        elif md_final_min == self.MDM_plot[-1]:
+            resultInc = stats.ttest_ind(a=self.incDSM, b=self.incM, equal_var=True, nan_policy='omit')
+            resultAz = stats.ttest_ind(a=self.azDSM, b=self.azM, equal_var=True, nan_policy='omit')
+            resultN = stats.ttest_ind(a=self.NpositionDSM, b=self.NpositionM, equal_var=True, nan_policy='omit')
+            resultE = stats.ttest_ind(a=self.EpositionDSM, b=self.EpositionM, equal_var=True, nan_policy='omit')
+            resultV = stats.ttest_ind(a=self.VpositionDSM, b=self.VpositionM, equal_var=True, nan_policy='omit')
+
+        elif md_final_min == self.MDOMM_plot[-1]:
+            resultInc = stats.ttest_ind(a=self.incDSM, b=self.incOMM, equal_var=True, nan_policy='omit')
+            resultAz = stats.ttest_ind(a=self.azDSM, b=self.azOMM, equal_var=True, nan_policy='omit')
+            resultN = stats.ttest_ind(a=self.NpositionDSM, b=self.NpositionOMM, equal_var=True, nan_policy='omit')
+            resultE = stats.ttest_ind(a=self.EpositionDSM, b=self.EpositionOMM, equal_var=True, nan_policy='omit')
+            resultV = stats.ttest_ind(a=self.VpositionDSM, b=self.VpositionOMM, equal_var=True, nan_policy='omit')
+
+        """
+        print(f'T test inclinação: {resultInc} /n')
+        print(f'T test azimute: {resultAz} /n')
+        print(f'T test norte: {resultN} /n')
+        print(f'T test leste: {resultE} /n')
+        print(f'T test vertical: {resultV} /n')
+        """
+
+    def run_Testes_Metodologia_Survey_Definitivo(self):
+
+        super().run_ModeloErro()
+        self.relative_Instrument_Performance()
+        self.chi_Square()
+        self.t_Test()
+
+
+class Plot(Testes_Metodologia_Survey_Definitivo):
+
+    def __init__(self):
+        super().__init__()
+        self.click_count = 0
+
+    def graph_trajectories(self):
+
+        # Crie uma nova figura e adicione um subplot 3D
+        fig1 = plt.figure(figsize=(10, 7))
+        ax = fig1.add_subplot(111, projection='3d')
+
+        # Adicione a trajetória 3D
+        ax.plot(self.NpositionM_plot, self.EpositionM_plot, self.VpositionM_plot, color='darkblue', linewidth=2, label='MWD')
+        ax.plot(self.NpositionG_plot, self.EpositionG_plot, self.VpositionG_plot, color='red', linewidth=2, label='GWD')
+
+        if range(self.numero_comparacao) == 2:
+            ax.plot(self.NpositionOMM_plot, self.EpositionOMM_plot, self.VpositionOMM_plot, color='gray', linewidth=2, label='OMM')
+
+        # Defina os títulos dos eixos
+        # ax.set_xlabel('North / South (m)')
+        # ax.set_ylabel('East / West (m)')
+        ax.set_xlabel('Norte / Sul (m)')
+        ax.set_ylabel('Leste / Oeste (m)')
+        ax.set_zlabel('TVD (m)')
+        ax.set_title('Comparação da trajetória do poço')
+        ax.legend()
+
+        # Inverta o eixo Z para corresponder à orientação do gráfico plotly
+        ax.invert_zaxis()
+
+        return fig1, ax
+
+    def graph_elipses(self, indice_profundidade=None):
+
+        # Cria uma figura e adicione um subplot 3D
+        fig2, ax2 = plt.subplots(figsize=(10, 7))
+
+        #Calcula a distancia entre os centros das elipses
+
+        DeltaN = self.NpositionG[-1] - self.NpositionM[-1]
+        DeltaE = self.EpositionG[-1] - self.EpositionM[-1]
+        DeltaV = self.VpositionG[-1] - self.VpositionM[-1]
+
+        DeltaH = DeltaN * np.cos(self.azG[-1]) * np.cos(self.incG[-1]) + DeltaE * np.sin(self.azG[-1]) * np.cos(self.incG[-1]) - DeltaV * np.sin(self.incG[-1])
+
+        DeltaL = - DeltaN * np.sin(self.azG[-1]) + DeltaE * np.cos(self.azG[-1])
+
+        DeltaA = DeltaN * np.cos(self.azG[-1]) * np.sin(self.incG[-1]) + DeltaE * np.sin(self.azG[-1]) * np.sin(self.incG[-1]) + DeltaV * np.cos(self.incG[-1])
+
+        self.elipses_transformation("MWD", 'blue', ax2, DeltaH, DeltaL)
+
+        self.elipses_transformation("GWD", 'red', ax2, DeltaH=0, DeltaL=0)
+
+        # self.elipses_transformation("DSM", 'green', ax2, DeltaH, DeltaL)
+
+        if self.numero_comparacao == 3:
+            self.elipses_transformation('OMM', 'gray', ax2, DeltaH, DeltaL)
+
+        ax2.set_xlabel('Lateral (m)')
+        ax2.set_ylabel('Highside (m)')
+        ax2.set_title(f'Comparação das Elipses de Incerteza entre MWD e GWD --> MD = {self.MDG[-1]} m')
+        ax2.legend()
+
+        return fig2, ax2
+
+    def elipses_transformation(self, ipm_name, color, ax2, DeltaH, DeltaL):
+
+        # Calcula os pontos na borda da elipse em coordenadas polares 2D
+        t = np.linspace(0, 2 * np.pi, 1000)
+
+        # Inicializa os arrays para armazenar os pontos da elipse
+        highside_elipse = np.zeros_like(t)
+        lateral_elipse = np.zeros_like(t)
+        auxiliar_elipse = np.zeros_like(t)
+
+        autoval = getattr(self, f'autoval_{ipm_name}')
+        autovec = getattr(self, f'autovec_{ipm_name}')
+
+        # Calcula os pontos na borda da elipse para cada matriz em autoval
+        for matriz in autoval:
+            for i, theta in enumerate(t):
+                cos_t = np.cos(theta)
+                sin_t = np.sin(theta)
+
+                auxiliar_elipse = 1 / ((cos_t ** 2 * matriz[0][0]) + (sin_t ** 2 * matriz[1][1]) + (
+                            2 * cos_t * sin_t * matriz[0][1]))
+
+                highside_elipse[i] = mt.sqrt(auxiliar_elipse) * sin_t
+                lateral_elipse[i] = mt.sqrt(auxiliar_elipse) * cos_t
+
+        print(f' O raio HS do {ipm_name} é: {(max(highside_elipse) - min(highside_elipse)) / 2}')
+        print(f' O raio Lateral do {ipm_name} é: {(max(lateral_elipse) - min(lateral_elipse)) / 2}\n')
+
+        print(f' DeltaH {ipm_name} é: {DeltaH}')
+        print(f' DeltaL {ipm_name} é: {DeltaL}\n')
+
+        ax2.plot(lateral_elipse + DeltaL, highside_elipse + DeltaH, color=color, alpha=0.9, label=f'Elipse {ipm_name}')
+
+        # Plot a point at the center of the ellipse
+        ax2.plot(0 + DeltaL, 0 + DeltaH, marker='o', color=color)
+
+    def graph_metodologia_survey_definitivo(self):
+
+        # Crie uma nova figura
+        fig3 = plt.figure(figsize=(7, 7))
+        ax3 = fig3.add_subplot(111)
+
+        menos_erro_esperado_inc = [-valor for valor in self.erro_esperado_inc]
+        menos_erro_esperado_azi = [-valor for valor in self.erro_esperado_azi]
+
+        # Cria o gráfico 2D
+        plt.plot(self.mdDSM, self.delta_inc, label='Delta inclinação (deg)', color='blue')
+        plt.plot(self.mdDSM, self.erro_esperado_inc, linestyle='--', color='red')
+        plt.plot(self.mdDSM, menos_erro_esperado_inc, label='Tolerancia erro (deg)', linestyle='--', color='red')
+
+        ax3.set_xlabel('Profundidade Medida (m)')
+        ax3.set_ylabel('Diferença da Inclinação (graus)')
+        ax3.set_title('Relative Instrument Performance (RIP) --> Inclinação')
+        ax3.legend(loc='upper right')
+
+        fig4 = plt.figure(figsize=(7, 7))
+        ax2 = fig4.add_subplot(111)
+
+        ax2.plot(self.mdDSM, self.delta_azi, label='Delta Azimute (deg)', color='green')
+        ax2.plot(self.mdDSM, self.erro_esperado_azi, linestyle='--', color='red')
+        ax2.plot(self.mdDSM, menos_erro_esperado_azi, label='Tolerancia erro (deg)', linestyle='--', color='red')
+        ax2.set_xlabel('Profundidade Medida (m)')
+        ax2.set_ylabel('Diferença da Azimute (graus)')
+        ax2.set_title('Relative Instrument Performance (RIP) --> Azimute')
+        ax2.legend(loc='upper right')
+
+        return fig3, fig4
+
+    def graph_well_data(self):
+
+        dogleg_MWD = []
+        dogleg_GWD = []
+        dogleg_OMM = []
+        dogleg_DSM = []
+        dogleg_DSM_2 = []
+
+        self.incDSM = [mt.degrees(incDSM) for incDSM in self.incDSM]
+        self.azDSM = [mt.degrees(azDSM) for azDSM in self.azDSM]
+
+        dogleg_MWD = self.dogleg(self.MDM_plot, self.incM_plot, self.azM_plot)
+        dogleg_GWD = self.dogleg(self.MDG_plot, self.incG_plot, self.azG_plot)
+
+        if self.numero_comparacao >= 3:
+            dogleg_OMM = self.dogleg(self.MDOMM_plot, self.incOMM_plot, self.azOMM_plot)
+            dogleg_DSM_2 = self.dogleg(self.mdDSM_2, self.incDSM_2, self.azDSM_2)
+
+        dogleg_DSM = self.dogleg(self.mdDSM, self.incDSM, self.azDSM)
+
+        # Crie uma nova figura para o dogleg
+        fig5 = plt.figure(figsize=(7, 7))
+        ax5 = fig5.add_subplot(111)
+
+        ax5.plot(self.MDM_plot, dogleg_MWD, label='MWD', marker='s', color='blue')
+        ax5.plot(self.MDG_plot, dogleg_GWD, label='GWD', marker='o', color='red')
+        ax5.plot(self.mdDSM, dogleg_DSM, label='DSM', marker='*', color='green')
+
+        ax5.set_xlabel('Profundidade Medida (m)')
+        ax5.set_ylabel('Dogleg (graus/30m)')
+        ax5.set_title('Profundidade Medida por Dogleg --> MWD x GWD')
+        ax5.legend(loc='upper right')
+
+        # Crie uma nova figura para a inclinacao
+        fig6 = plt.figure(figsize=(7, 7))
+        ax6 = fig6.add_subplot(111)
+
+        ax6.plot(self.MDM_plot, self.incM_plot, label='MWD', marker='s', color='blue')
+        ax6.plot(self.MDG_plot, self.incG_plot, label='GWD', marker='o', color='red')
+        ax6.plot(self.mdDSM, self.incDSM, label='DSM', marker='*', color='green')
+
+        ax6.set_xlabel('Profundidade Medida (m)')
+        ax6.set_ylabel('Inclinação (graus)')
+        ax6.set_title('Profundidade Medida por Inclinação --> MWD x GWD')
+        ax6.legend(loc='upper right')
+
+        # Crie uma nova figura para o azimute
+        fig7 = plt.figure(figsize=(7, 7))
+        ax7 = fig7.add_subplot(111)
+
+        ax7.plot(self.MDM_plot, self.azM_plot, label='MWD', marker='s', color='blue')
+        ax7.plot(self.MDG_plot, self.azG_plot, label='GWD', marker='o', color='red')
+        ax7.plot(self.mdDSM, self.azDSM, label='DSM', marker='*', color='green')
+
+        ax7.set_xlabel('Profundidade Medida (m)')
+        ax7.set_ylabel('Azimute (graus)')
+        ax7.set_title('Profundidade Medida por Azimute --> MWD x GWD')
+        ax7.legend(loc='upper right')
+
+        # Exiba o gráfico
+        ax5.grid(True)
+        ax6.grid(True)
+        ax7.grid(True)
+
+        return fig5, fig6, fig7
+
+    def dogleg(self, md, inc, azi):
+
+        dogleg = np.zeros(len(md))
+        dividendo_dogleg = np.zeros(len(md))
+
+        for i in range(1, len(md)):
+            dividendo_dogleg[i] = mt.acos(
+                mt.cos(inc[i - 1]) * mt.cos(inc[i]) + mt.sin(inc[i - 1]) * mt.sin(inc[i]) * mt.cos(azi[i - 1] - azi[i]))
+
+            # dogleg em °/30m
+            dogleg[i] = 30 * dividendo_dogleg[i] / (md[i] - md[i - 1])
+
+        return dogleg
+
+    # Função para adicionar interatividade ao gráfico
+    def on_click(self, event):
+        if event.inaxes is not None:
+            # Clique dentro do eixo
+            x, y = event.xdata, event.ydata
+            print(f'Clicado em ({x:.2f}, {y:.2f})')
+
+            # Contar o clique
+            self.click_count += 1
+
+            # Exibir caixa de diálogo com as coordenadas ao clicar duas vezes
+            if self.click_count == 2:
+                self.show_coordinates_text(event.inaxes, x, y)
+                self.show_coordinates_point(event.inaxes, x, y)
+                self.click_count = 0  # Resetar o contador após o segundo clique
+
+    def show_coordinates_text(self, ax, x, y):
+        # Adicionar texto com as coordenadas ao lado do ponto
+        text = f'({x:.2f}, {y:.2f})'
+        ax.text(x, y, text, color='black', fontsize=8, ha='right', va='bottom')
+        plt.draw()
+
+    def show_coordinates_point(self, ax, x, y):
+        # Marcar o ponto com um círculo vermelho
+        ax.plot(x, y, 'ro')
+        plt.draw()
+
+    def run_graph(self):
+
+        super().run_Testes_Metodologia_Survey_Definitivo()
+
+        fig1, ax1 = self.graph_trajectories()
+        fig1.canvas.mpl_connect('button_press_event', self.on_click)
+        fig1.savefig(os.path.expanduser("~/Desktop/Trajetorias_Comparacao.png"))
+
+        fig2, ax2 = self.graph_elipses()
+        fig2.canvas.mpl_connect('button_press_event', self.on_click)
+        fig2.savefig(os.path.expanduser("~/Desktop/Elipses_TD_Comparacao.png"))
+
+        fig3, fig4 = self.graph_metodologia_survey_definitivo()
+        fig3.canvas.mpl_connect('button_press_event', self.on_click)
+        fig4.canvas.mpl_connect('button_press_event', self.on_click)
+
+        fig3.savefig(os.path.expanduser("~/Desktop/RIP_Inclinacao.png"))
+        fig4.savefig(os.path.expanduser("~/Desktop/RIP_Azimute.png"))
+
+        fig5, fig6, fig7 = self.graph_well_data()
+        fig5.canvas.mpl_connect('button_press_event', self.on_click)
+        fig6.canvas.mpl_connect('button_press_event', self.on_click)
+        fig7.canvas.mpl_connect('button_press_event', self.on_click)
+
+        fig5.savefig(os.path.expanduser("~/Desktop/Dogleg.png"))
+        fig6.savefig(os.path.expanduser("~/Desktop/Inclinacao.png"))
+        fig7.savefig(os.path.expanduser("~/Desktop/Azimute.png"))
+
+        # Exibe as figuras juntas
+        plt.show()
+
+
+# data_input = DataInput()
+# data_input.run()
+
+# MinimumCurvature = MinimumCurvature()
+# MinimumCurvature.run_MinimumCurvature()
+
+# ModeloErro = ModeloErro()
+# ModeloErro.run_ModeloErro()
+
+plot = Plot()
+fig = plot.run_graph()  # armazene o objeto Figure retornado em 'fig'
+
+# Testes_Metodologia_Survey_Definitivo = Testes_Metodologia_Survey_Definitivo()
+# Testes_Metodologia_Survey_Definitivo.run_Testes_Metodologia_Survey_Definitivo()
